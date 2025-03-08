@@ -65,7 +65,7 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
         downloadUrl="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
         downloadLocation="$HOME/.local/bin/adbutil"
         if curl -s -L -o "$downloadLocation" "$downloadUrl"; then
-            sudo chmod +x "$downloadLocation"
+            chmod +x "$downloadLocation"
             log "$LOG_DONE" "adbutil installed successfully."
         else
             log "$LOG_FAIL" "Failed to download adbutil."
