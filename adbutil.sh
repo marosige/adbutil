@@ -62,7 +62,7 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
     log "$LOG_WARN" "adbutil is not installed on your system"
     read -p "Do you want to install it? [y/N]: " -r
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        downloadUrl="https://gist.githubusercontent.com/marosige/3df88ffe29b8f5e8d93389d0ab0991e5/raw/a79108f34c2262240e703f93105ec2e9d85d961b/adbutil"
+        downloadUrl="https://marosige.github.io/adbutil/adbutil.sh"
         downloadLocation="/usr/local/bin/adbutil"
         if curl -L -o "$downloadLocation" "$downloadUrl"; then
             sudo chmod +x "$downloadLocation"
