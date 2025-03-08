@@ -75,6 +75,7 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
     else
         log "$LOG_WARN" "You can disable this prompt by setting ADBUTIL_SKIP_ASK_INSTALL=true in $ADBUTIL_CONFIG"
     fi
+    read -p "Press enter to continue to ADB Utility main menu."
 fi
 
 ## Menu
