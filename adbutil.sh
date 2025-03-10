@@ -156,7 +156,7 @@ fi
 menu() {
     options=("$@")
     if [ "$ADBUTIL_USE_GUM" = "true" ]; then
-        gum choose "${options[@]}"
+        gum choose --highlight "blue" "${options[@]}"
     else
         PS3="Please select an option: "
         select choice in "${options[@]}"; do
@@ -170,7 +170,7 @@ menu() {
 
 ## Actions
 actionPackage() {
-    clear; log "$LOG_TITLE" "Selected package: $1"
+    clear; echo "📦 Selected Package: $1"
     case "$(menu "Launch" "Force Stop" "Uninstall" "Clear Data" "Open Info Page" "Back")" in
         "Launch") adb shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
         "Force Stop") adb shell am force-stop "$1" ;;
@@ -182,7 +182,7 @@ actionPackage() {
     actionPackage "$1"
 }
 actionCredentials() {
-    clear; log "$LOG_TITLE" "Credentials for user: $1"
+    clear; echo "🔐 Credentials for User: $1"
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title user pass <<< "$cred"
         if [ "$title" == "$1" ]; then
@@ -197,7 +197,7 @@ actionCredentials() {
     actionCredentials "$1"
 }
 actionPasteString() {
-    clear; log "$LOG_TITLE" "Paste string for category: $1"
+    clear; echo "📋 Paste Strings for Category: $1"
     values=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category value <<< "$string"
@@ -245,7 +245,7 @@ actionRestartDevice() { adb reboot; }
 
 ## Menus
 menuPackages() {
-    clear; log "$LOG_TITLE" "Third party packages:"
+    clear; echo "📦 Third Party Packages"
     packages=($(adb shell cmd package list packages -3 | cut -f 2 -d ":"))  # cut "package:" from "package:com.android.bluetooth"
     sortedPackages=($(echo "${packages[@]}" | tr ' ' '\n' | sort))
     options=("Refresh" "${sortedPackages[@]}" "Back")
@@ -257,7 +257,7 @@ menuPackages() {
     esac
 }
 menuCredentials() {
-    clear; log "$LOG_TITLE" "Credentials:"
+    clear; echo "🔐 Credentials"
     titles=()
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title _ _ <<< "$cred"
@@ -273,7 +273,7 @@ menuCredentials() {
     menuCredentials
 }
 menuPasteStrings() {
-    clear; log "$LOG_TITLE" "Paste strings:"
+    clear; echo "📋 Paste Strings"
     categories=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category _ <<< "$string"
@@ -289,7 +289,7 @@ menuPasteStrings() {
     menuPasteStrings
 }
 menuLayoutBounds() {
-    clear; log "$LOG_TITLE" "Layout bounds:"
+    clear; echo "🎯 Layout Bounds"
     case "$(menu "On" "Off" "Back")" in
         "On") actionLayoutBounds "true" ;;
         "Off") actionLayoutBounds "false" ;;
@@ -298,7 +298,7 @@ menuLayoutBounds() {
     menuLayoutBounds
 }
 menuProxy() {
-    clear; log "$LOG_TITLE" "Proxy:"
+    clear; echo "🌐 Proxy"
     case "$(menu "On" "Off" "Status" "Back")" in
         "On") actionProxyOn ;;
         "Off") actionProxyOff ;;
@@ -308,7 +308,7 @@ menuProxy() {
     menuProxy
 }
 menuDemoMode() {
-    clear; log "$LOG_TITLE" "Demo mode:"
+    clear; echo "📸 Demo Mode"
     case "$(menu "On" "Off" "Back")" in
         "On") actionDemoMode true ;;
         "Off") actionDemoMode false ;;
@@ -317,7 +317,7 @@ menuDemoMode() {
     menuDemoMode
 }
 menuMediaSession() {
-    clear; log "$LOG_TITLE" "Media session controls:"
+    clear; echo "🎬 Media Session"
     case "$(menu "play-pause" "play" "pause" "fast-forward" "rewind" "Info" "Back")" in
         "Back") menuMain; return ;;
         "Info") adb shell dumpsys media_session ;;
@@ -326,7 +326,7 @@ menuMediaSession() {
     menuMediaSession
 }
 menuFireTVDevTools() {
-    clear; log "$LOG_TITLE" "Fire TV dev tools:"
+    clear; echo "🔧 Fire TV Dev Tools"
     case "$(menu "Open" "Back")" in
         "Open") actionOpenFireTVDevTools ;;
         "Back") menuMain; return ;;
@@ -334,7 +334,7 @@ menuFireTVDevTools() {
     menuFireTVDevTools
 }
 menuSyncTime() {
-    clear; log "$LOG_TITLE" "Set time:"
+    clear; echo "⏱️ Sync Time"
     case "$(menu "Sync time automatically (needs root)" "Open settings page" "Restart device" "Back")" in
         "Sync time automatically (needs root)") actionSetSystemDate ;;
         "Open settings page") actionOpenDateSettings ;;
@@ -347,7 +347,7 @@ menuSyncTime() {
 ## Main Menu
 menuMain() {
     clear; log "$LOG_TITLE" "Main menu:"
-    case "$(menu "📦 Packages" "🔐 Credentials" "📋 Paste Strings" "🎯 Layout Bounds" "🌐 Proxy" "📸 Demo Mode" "🎬 Media Session" "🔧 Fire TV Dev Tools" "⏱️ Sync Time" "Exit")" in
+    case "$(menu "📦 Packages" "🔐 Credentials" "📋 Paste Strings" "🎯 Layout Bounds" "🌐 Proxy" "📸 Demo Mode" "🎬 Media Session" "🔧 Fire TV Dev Tools" "⏱️ Sync Time" "🚪 Exit")" in
         "📦 Packages") menuPackages ;;
         "🔐 Credentials") menuCredentials ;;
         "📋 Paste Strings") menuPasteStrings ;;
@@ -357,7 +357,7 @@ menuMain() {
         "🎬 Media Session") menuMediaSession ;;
         "🔧 Fire TV Dev Tools") menuFireTVDevTools ;;
         "⏱️ Sync Time") menuSyncTime ;;
-        "Exit") exit 0 ;;
+        "🚪 Exit") exit 0 ;;
     esac
     menuMain
 }
