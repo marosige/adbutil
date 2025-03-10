@@ -71,6 +71,22 @@ ADBUTIL_PASTE_STRINGS=(
 )
 EOF
     echo -e "$LOG_ADD Default config file created at $ADBUTIL_CONFIG"
+else
+    # Ensure all required constants are present in the config file
+    declare -A default_values=(
+        ["ADBUTIL_SKIP_ASK_INSTALL"]="false"
+        ["ADBUTIL_SKIP_ASK_UPDATE"]="false"
+        ["ADBUTIL_USE_GUM"]="true"
+        ["ADBUTIL_CREDENTIALS"]="(\"Set your credentials in $ADBUTIL_CONFIG config file|Username|Password\")"
+        ["ADBUTIL_PASTE_STRINGS"]="(\"Set your strings to paste in $ADBUTIL_CONFIG config file|String\")"
+    )
+
+    for key in "${!default_values[@]}"; do
+        if ! grep -q "^$key=" "$ADBUTIL_CONFIG"; then
+            echo "$key=${default_values[$key]}" >> "$ADBUTIL_CONFIG"
+            echo -e "$LOG_ADD Added missing config key: $key with default value"
+        fi
+    done
 fi
 source "$ADBUTIL_CONFIG"
 
@@ -172,6 +188,21 @@ actionCredentials() {
     done
     actionCredentials "$1"
 }
+actionPasteString() {
+    clear; log "$LOG_TITLE" "Paste string for category: $1"
+    values=()
+    for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
+        IFS='|' read -r category value <<< "$string"
+        if [ "$category" == "$1" ]; then
+            values+=("$value")
+        fi
+    done
+    selected_value=$(menu "${values[@]}" "Back")
+    case "$selected_value" in
+        "Back") menuPasteStrings; return ;;
+        *) adb shell input text "$selected_value" ;;
+    esac
+}
 actionLayoutBounds() { adb shell setprop debug.layout "$1"; adb shell service call activity 1599295570 > /dev/null 2>&1; }
 actionProxyOn() { adb shell settings put global http_proxy "$(ipconfig getifaddr en0):8888"; }
 actionProxyOff() { adb shell settings put global http_proxy :0; }
@@ -233,6 +264,22 @@ menuCredentials() {
     esac
     menuCredentials
 }
+menuPasteStrings() {
+    clear; log "$LOG_TITLE" "Paste strings:"
+    categories=()
+    for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
+        IFS='|' read -r category _ <<< "$string"
+        categories+=("$category")
+    done
+    selected_option=$(menu "${categories[@]}" "Back")
+    case "$selected_option" in
+        "Back") menuMain; return ;;
+        *)
+            actionPasteString "$selected_option"
+        ;;
+    esac
+    menuPasteStrings
+}
 menuLayoutBounds() {
     clear; log "$LOG_TITLE" "Layout bounds:"
     case "$(menu "On" "Off" "Back")" in
@@ -292,15 +339,16 @@ menuSyncTime() {
 ## Main Menu
 menuMain() {
     clear; log "$LOG_TITLE" "Main menu:"
-    case "$(menu "Packages" "Credentials" "Layout Bounds" "Proxy" "Demo Mode" "Media Session" "Fire TV Dev Tools" "Sync Time" "Exit")" in
-        "Packages") menuPackages ;;
-        "Credentials") menuCredentials ;;
-        "Layout Bounds") menuLayoutBounds ;;
-        "Proxy") menuProxy ;;
-        "Demo Mode") menuDemoMode ;;
-        "Media Session") menuMediaSession ;;
-        "Fire TV Dev Tools") menuFireTVDevTools ;;
-        "Sync Time") menuSyncTime ;;
+    case "$(menu "📦 Packages" "🔐 Credentials" "📋 Paste Strings" "🎯 Layout Bounds" "🌐 Proxy" "📸 Demo Mode" "🎬 Media Session" "🔧 Fire TV Dev Tools" "⏱️ Sync Time" "Exit")" in
+        "📦 Packages") menuPackages ;;
+        "🔐 Credentials") menuCredentials ;;
+        "📋 Paste Strings") menuPasteStrings ;;
+        "🎯 Layout Bounds") menuLayoutBounds ;;
+        "🌐 Proxy") menuProxy ;;
+        "📸 Demo Mode") menuDemoMode ;;
+        "🎬 Media Session") menuMediaSession ;;
+        "🔧 Fire TV Dev Tools") menuFireTVDevTools ;;
+        "⏱️ Sync Time") menuSyncTime ;;
         "Exit") exit 0 ;;
     esac
     menuMain

@@ -1,65 +1,74 @@
-# ADBUtil - ADB Utility for Android Development
+# 📱 ADB Utility (`adbutil`)
 
-ADBUtil is a powerful command-line tool designed to simplify ADB (Android Debug Bridge) operations for Android developers. It provides a menu-driven interface to interact with ADB, manage packages, handle credentials, configure proxies, and more.
+A powerful interactive Bash utility for Android development, powered by ADB. Supports app management, demo mode, proxy settings, device credentials, and more — all from a clean TUI using [Gum](https://github.com/charmbracelet/gum) (or fallback to plain `select`).
 
-## Features
-- Launch, force stop, uninstall, and clear app data
-- Store and autofill credentials
-- Enable/disable layout bounds debugging
-- Manage HTTP proxy settings
-- Control media sessions
-- Toggle Android demo mode
-- Open Fire TV Developer Tools
-- Sync system time
+Created by [Gergely Marosi](https://github.com/marosige)
 
-## Installation
-To install ADBUtil, use the following command to run it and it will install itself:
+## ✨ Features
 
-    bash -c "$(curl -fsSL https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh)"
+- 📦 Manage installed packages: launch, uninstall, clear data, and more  
+- 🔐 Store and inject saved credentials into apps  
+- 🎯 Toggle layout bounds for debugging UI  
+- 🌐 Set or check proxy settings on the device  
+- 📸 Toggle Android’s demo mode (perfect for screenshots)  
+- 🎬 Control media sessions  
+- 🔧 Fire TV Dev Tools quick access  
+- ⏱️ Sync device time or open settings  
 
-### Prerequisites
-Ensure you have the following installed on your system:
-- **ADB** (Android Debug Bridge)
-- **gum** (optional, for a better UI experience)
+---
 
-## Configuration
-ADBUtil stores its configuration in `~/.adbutil`. If the file does not exist, it will be automatically generated with default settings.
+## 🧪 Prerequisites
 
-Example `~/.adbutil` configuration:
+- **ADB** installed and added to your `PATH`  
+- (Optional but recommended) [Gum](https://github.com/charmbracelet/gum) for a better terminal UI experience
+
+---
+
+## 🧰 Installation
+
+Run directly via `curl`:
+
 ```bash
-# ADB Utility Configuration
-ADBUTIL_SKIP_ASK_INSTALL=false
-ADBUTIL_USE_GUM=true
-ADBUTIL_CREDENTIALS=(
-    "Set your credentials in $ADBUTIL_CONFIG config file|Username|Password"
-    "Admin|admin|admin123"
-    "User 1|user1|password1"
-    "User 2|user2|password2"
-)
+bash <(curl -s https://raw.githubusercontent.com/marosige/adbutil/main/adbutil.sh)
 ```
 
-## Credential Management
-ADBUtil allows you to store login credentials securely inside the `~/.adbutil` file. You can autofill stored usernames and passwords in Android applications via ADB commands.
-
-## Usage
-Run `adbutil` in your terminal to launch the interactive menu.
+You can then run it at any time using:
 
 ```bash
 adbutil
 ```
-Navigate through the menu to perform actions such as:
-- Managing installed applications
-- Inputting stored credentials
-- Adjusting proxy settings
-- Controlling media sessions
-- Enabling demo mode
 
-## License
-This project is licensed under the MIT License.
+## 🛠️ Configuration
 
-## Author
-Developed by **Gergely Marosi** - [GitHub](https://github.com/marosige)
+When you run `adbutil` for the first time, it creates a configuration file at:
 
-## Contributions
-Contributions are welcome! Feel free to submit pull requests or report issues in the GitHub repository.
+```
+~/.adbutil
+```
 
+You can customize the following options in that file:
+
+```bash
+# Preferences
+ADBUTIL_SKIP_ASK_INSTALL=false     # Skip the install prompt
+ADBUTIL_SKIP_ASK_UPDATE=false      # Skip the update prompt
+ADBUTIL_USE_GUM=true               # Use gum for nicer UI if installed
+
+# Credentials
+# Format: "Title|Username|Password"
+ADBUTIL_CREDENTIALS=(
+    "Admin|adminuser|password"
+    "Free user|freeuser|password"
+)
+
+# Strings to paste
+# Format: "Category|String"
+ADBUTIL_PASTE_STRINGS=(
+    "register|email@example.com"
+    "promocode|AAAA-1111-BBBB-2222"
+)
+```
+
+> 💡 Tip: You can disable install/update prompts by setting the related flags to `true` in the config.
+
+Changes take effect the next time you launch `adbutil`.
