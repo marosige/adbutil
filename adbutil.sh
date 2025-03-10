@@ -18,6 +18,10 @@ DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
 LOCAL_VERSION="1.0.0"
 REMOTE_VERSION=$(curl -s -L "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
+if [ -z "$REMOTE_VERSION" ]; then
+    echo "Failed to fetch remote version from $DONWLOAD_URL"
+    exit 1
+fi
 
 ## Logging
 BOLD='\033[1m'
