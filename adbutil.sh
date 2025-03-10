@@ -11,6 +11,13 @@
 
 ### Bootstrap
 
+## Constants
+LOCAL_VERSION="1.0.0"
+REMOTE_VERSION=$(curl -s -L $DONWLOAD_URL | grep -Eo "LOCAL_VERSION=\"[0-9.]+\"" | cut -d "\"" -f 2)
+
+DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
+DONWLOAD_LOCATION="$HOME/.local/bin/adbutil"
+
 ## Logging
 BOLD='\033[1m'
 BRIGHT_BLUE='\033[0;94m'
@@ -34,14 +41,33 @@ log() { echo -e "$1 $2"; }
 ADBUTIL_CONFIG="$HOME/.adbutil"
 if [ ! -f "$ADBUTIL_CONFIG" ]; then
     cat <<EOF > "$ADBUTIL_CONFIG"
-# ADB Utility Configuration
+### ADB Utility Configuration
+### https://github.com/marosige/adbutil
+
+## Preferences
 ADBUTIL_SKIP_ASK_INSTALL=false
+ADBUTIL_SKIP_ASK_UPDATE=false
 ADBUTIL_USE_GUM=true
+
+## Private 
+
+# Credentials
+# Format: "Title|Username|Password"
+# Examples: "Admin|adminuser|password"
+#           "Free user|freeuser|password"
+#           "Subsciber|subuser|password"
 ADBUTIL_CREDENTIALS=(
-    "Set your credentials in $ADBUTIL_CONFIG config file|Username|Password"
-    "Admin|admin|admin123"
-    "User 1|user1|password1"
-    "User 2|user2|password2"
+    "Set your credentials in $ADBUTIL_CONFIG config file|Username written here will be pasted on android device|Password written here will be pasted on android device"
+
+# Strings to paste
+# Format: "Category|String"
+# Examples: "register|email"
+#           "register|password"
+#           "register|country"
+#           "promocode|AAAA-1111-BBBB-2222"
+#           "promocode|BBBB-3333-CCCC-4444"
+ADBUTIL_PASTE_STRINGS=(
+    "Set your strings to paste in $ADBUTIL_CONFIG config file|String written here will be pasted on android device")
 )
 EOF
     echo -e "$LOG_ADD Default config file created at $ADBUTIL_CONFIG"
@@ -50,7 +76,9 @@ source "$ADBUTIL_CONFIG"
 
 ADBUTIL_USE_GUM=${ADBUTIL_USE_GUM:=true}
 ADBUTIL_SKIP_ASK_INSTALL=${ADBUTIL_SKIP_ASK_INSTALL:=false}
+ADBUTIL_SKIP_ASK_UPDATE=${ADBUTIL_SKIP_ASK_UPDATE:=false}
 ADBUTIL_CREDENTIALS=${ADBUTIL_CREDENTIALS:=("Set your credentials in $ADBUTIL_CONFIG config file|Username|Password")}
+ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=("Set your strings to paste in $ADBUTIL_CONFIG config file|String")}
 
 ## Dependencies
 isCommandExist() { command -v "$1" &> /dev/null; }
@@ -62,14 +90,12 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
     log "$LOG_WARN" "adbutil is not installed on your system"
     read -p "Do you want to install it? [y/N]: " -r
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        downloadUrl="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
-        downloadLocation="$HOME/.local/bin/adbutil"
-        if curl -s -L -o "$downloadLocation" "$downloadUrl"; then
+        if curl -s -L -o "$downloadLocation" "$DONWLOAD_URL"; then
             chmod +x "$downloadLocation"
             log "$LOG_DONE" "adbutil installed successfully."
         else
             log "$LOG_FAIL" "Failed to download adbutil."
-            log "$LOG_INDENT" "You can manually download it from: $downloadUrl"
+            log "$LOG_INDENT" "You can manually download it from: $DONWLOAD_URL"
             log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
         fi
     else
@@ -77,6 +103,30 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
     fi
     read -p "Press enter to continue to ADB Utility main menu."
 fi
+
+## Update
+if [ "$LOCAL_VERSION" != "$REMOTE_VERSION" ]; then
+    log "$LOG_WARN" "New version of adbutil is available."
+    log "$LOG_INDENT" "Current version: $LOCAL_VERSION"
+    log "$LOG_INDENT" "Latest version: $REMOTE_VERSION"
+    read -p "Do you want to update it now? [y/N]: " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
+            chmod +x "$DONWLOAD_LOCATION"
+            log "$LOG_DONE" "adbutil updated successfully."
+            exec "$DONWLOAD_LOCATION" "$@"
+        else
+            log "$LOG_FAIL" "Failed to update adbutil."
+            log "$LOG_INDENT" "You can manually update it downloading latest version from:"
+            log "$LOG_INDENT" "$DONWLOAD_URL"
+            log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
+        fi
+    else
+        log "$LOG_WARN" "You can disable this prompt by setting ADBUTIL_SKIP_ASK_UPDATE=true in $ADBUTIL_CONFIG"
+    fi
+    read -p "Press enter to continue to ADB Utility main menu."
+fi
+
 
 ## Menu
 menu() {
