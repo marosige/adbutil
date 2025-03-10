@@ -156,7 +156,7 @@ fi
 menu() {
     options=("$@")
     if [ "$ADBUTIL_USE_GUM" = "true" ]; then
-        gum choose --highlight "blue" "${options[@]}"
+        gum choose "${options[@]}"
     else
         PS3="Please select an option: "
         select choice in "${options[@]}"; do
@@ -346,8 +346,9 @@ menuSyncTime() {
 
 ## Main Menu
 menuMain() {
-    clear; log "$LOG_TITLE" "Main menu:"
-    case "$(menu "📦 Packages" "🔐 Credentials" "📋 Paste Strings" "🎯 Layout Bounds" "🌐 Proxy" "📸 Demo Mode" "🎬 Media Session" "🔧 Fire TV Dev Tools" "⏱️ Sync Time" "🚪 Exit")" in
+    clear; echo "📱 Main menu:"
+    selected_option=$(menu "📦 Packages" "🔐 Credentials" "📋 Paste Strings" "🎯 Layout Bounds" "🌐 Proxy" "📸 Demo Mode" "🎬 Media Session" "🔧 Fire TV Dev Tools" "⏱️ Sync Time" "🚪 Exit")
+    case "$selected_option" in
         "📦 Packages") menuPackages ;;
         "🔐 Credentials") menuCredentials ;;
         "📋 Paste Strings") menuPasteStrings ;;
