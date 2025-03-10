@@ -29,7 +29,7 @@ Created by [Gergely Marosi](https://github.com/marosige)
 Run directly via `curl`:
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/marosige/adbutil/main/adbutil.sh)
+curl -s https://raw.githubusercontent.com/marosige/adbutil/main/adbutil.sh | bash
 ```
 
 You can then run it at any time using:

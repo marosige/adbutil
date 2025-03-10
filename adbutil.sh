@@ -16,7 +16,8 @@ LOCAL_VERSION="1.0.0"
 REMOTE_VERSION=$(curl -s -L $DONWLOAD_URL | grep -Eo "LOCAL_VERSION=\"[0-9.]+\"" | cut -d "\"" -f 2)
 
 DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
-DONWLOAD_LOCATION="$HOME/.local/bin/adbutil"
+DOWNLOAD_FOLDER="$HOME/bin"
+DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
 
 ## Logging
 BOLD='\033[1m'
@@ -106,8 +107,15 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
     log "$LOG_WARN" "adbutil is not installed on your system"
     read -p "Do you want to install it? [y/N]: " -r
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        if curl -s -L -o "$downloadLocation" "$DONWLOAD_URL"; then
-            chmod +x "$downloadLocation"
+        #Create bin folder and add it to path if missing
+        mkdir -p "$DOWNLOAD_FOLDER"
+        [ -f "$HOME/.bashrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.bashrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.bashrc"
+        [ -f "$HOME/.zshrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.zshrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.zshrc"
+        [ -f "$HOME/.config/fish/config.fish" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.config/fish/config.fish" && echo "set -gx PATH \$PATH $DOWNLOAD_FOLDER" >> "$HOME/.config/fish/config.fish"
+
+        # Download and install adbutil
+        if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
+            chmod +x "$DONWLOAD_LOCATION"
             log "$LOG_DONE" "adbutil installed successfully."
         else
             log "$LOG_FAIL" "Failed to download adbutil."
