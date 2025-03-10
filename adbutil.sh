@@ -58,6 +58,7 @@ ADBUTIL_USE_GUM=true
 #           "Subsciber|subuser|password"
 ADBUTIL_CREDENTIALS=(
     "Set your credentials in $ADBUTIL_CONFIG config file|Username written here will be pasted on android device|Password written here will be pasted on android device"
+)
 
 # Strings to paste
 # Format: "Category|String"
