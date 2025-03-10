@@ -15,13 +15,8 @@
 DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
 DOWNLOAD_FOLDER="$HOME/bin"
 DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
-LOCAL_VERSION="1.0.0"
-REMOTE_VERSION=$(curl -s -L "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
-
-if [ -z "$REMOTE_VERSION" ]; then
-    echo "Failed to fetch remote version from $DONWLOAD_URL"
-    exit 1
-fi
+#LOCAL_VERSION="1.0.0"
+#REMOTE_VERSION=$(curl -s -L "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
 ## Logging
 BOLD='\033[1m'
@@ -133,27 +128,27 @@ if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
 fi
 
 ## Update
-if [ "$LOCAL_VERSION" != "$REMOTE_VERSION" ]; then
-    log "$LOG_WARN" "New version of adbutil is available."
-    log "$LOG_INDENT" "Current version: $LOCAL_VERSION"
-    log "$LOG_INDENT" "Latest version: $REMOTE_VERSION"
-    read -p "Do you want to update it now? [y/N]: " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
-            chmod +x "$DONWLOAD_LOCATION"
-            log "$LOG_DONE" "adbutil updated successfully."
-            exec "$DONWLOAD_LOCATION" "$@"
-        else
-            log "$LOG_FAIL" "Failed to update adbutil."
-            log "$LOG_INDENT" "You can manually update it downloading latest version from:"
-            log "$LOG_INDENT" "$DONWLOAD_URL"
-            log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
-        fi
-    else
-        log "$LOG_WARN" "You can disable this prompt by setting ADBUTIL_SKIP_ASK_UPDATE=true in $ADBUTIL_CONFIG"
-    fi
-    read -p "Press enter to continue to ADB Utility main menu."
-fi
+#if [ "$LOCAL_VERSION" != "$REMOTE_VERSION" ]; then
+#    log "$LOG_WARN" "New version of adbutil is available."
+#    log "$LOG_INDENT" "Current version: $LOCAL_VERSION"
+#    log "$LOG_INDENT" "Latest version: $REMOTE_VERSION"
+#    read -p "Do you want to update it now? [y/N]: " -r
+#    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#        if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
+#            chmod +x "$DONWLOAD_LOCATION"
+#            log "$LOG_DONE" "adbutil updated successfully."
+#            exec "$DONWLOAD_LOCATION" "$@"
+#        else
+#            log "$LOG_FAIL" "Failed to update adbutil."
+#            log "$LOG_INDENT" "You can manually update it downloading latest version from:"
+#            log "$LOG_INDENT" "$DONWLOAD_URL"
+#            log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
+#        fi
+#    else
+#        log "$LOG_WARN" "You can disable this prompt by setting ADBUTIL_SKIP_ASK_UPDATE=true in $ADBUTIL_CONFIG"
+#    fi
+#    read -p "Press enter to continue to ADB Utility main menu."
+#fi
 
 
 ## Menu
