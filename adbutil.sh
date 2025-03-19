@@ -15,7 +15,8 @@
 DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
 DOWNLOAD_FOLDER="$HOME/bin"
 DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
-#LOCAL_VERSION="1.0.0"
+LOCAL_VERSION="1.0.0"
+REMOTE_VERSION="1.0.0"
 #REMOTE_VERSION=$(curl -s -L "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
 ## Logging
@@ -39,17 +40,26 @@ log() { echo -e "$1 $2"; }
 
 ## Configuration
 ADBUTIL_CONFIG="$HOME/.adbutil"
-if [ ! -f "$ADBUTIL_CONFIG" ]; then
-    cat <<EOF > "$ADBUTIL_CONFIG"
+[ -f "$ADBUTIL_CONFIG" ] && source "$ADBUTIL_CONFIG"
+
+ADBUTIL_SKIP_ASK_INSTALL=${ADBUTIL_SKIP_ASK_INSTALL:=false}
+ADBUTIL_SKIP_ASK_UPDATE=${ADBUTIL_SKIP_ASK_UPDATE:=false}
+ADBUTIL_USE_GUM=${ADBUTIL_USE_GUM:=true}
+ADBUTIL_CREDENTIALS=${ADBUTIL_CREDENTIALS:=("Set your credentials in $ADBUTIL_CONFIG config file|Username|Password")}
+ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=("Set your strings to paste in $ADBUTIL_CONFIG config file|String")}
+
+rm -f "$ADBUTIL_CONFIG"
+
+cat <<EOF > "$ADBUTIL_CONFIG"
 ### ADB Utility Configuration
 ### https://github.com/marosige/adbutil
 
 ## Preferences
-ADBUTIL_SKIP_ASK_INSTALL=false
-ADBUTIL_SKIP_ASK_UPDATE=false
-ADBUTIL_USE_GUM=true
+ADBUTIL_SKIP_ASK_INSTALL=$ADBUTIL_SKIP_ASK_INSTALL
+ADBUTIL_SKIP_ASK_UPDATE=$ADBUTIL_SKIP_ASK_UPDATE
+ADBUTIL_USE_GUM=$ADBUTIL_USE_GUM
 
-## Private 
+## Private values
 
 # Credentials
 # Format: "Title|Username|Password"
@@ -57,7 +67,14 @@ ADBUTIL_USE_GUM=true
 #           "Free user|freeuser|password"
 #           "Subsciber|subuser|password"
 ADBUTIL_CREDENTIALS=(
-    "Set your credentials in $ADBUTIL_CONFIG config file|Username written here will be pasted on android device|Password written here will be pasted on android device"
+EOF
+
+# Add the credentials values to the config
+for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
+    echo "    \"$cred\"" >> "$ADBUTIL_CONFIG"
+done
+
+cat <<EOF >> "$ADBUTIL_CONFIG"
 )
 
 # Strings to paste
@@ -68,89 +85,46 @@ ADBUTIL_CREDENTIALS=(
 #           "promocode|AAAA-1111-BBBB-2222"
 #           "promocode|BBBB-3333-CCCC-4444"
 ADBUTIL_PASTE_STRINGS=(
-    "Set your strings to paste in $ADBUTIL_CONFIG config file|String written here will be pasted on android device")
+EOF
+
+# Add the paste strings values to the config
+for str in "${ADBUTIL_PASTE_STRINGS[@]}"; do
+    echo "    \"$str\"" >> "$ADBUTIL_CONFIG"
+done
+
+cat <<EOF >> "$ADBUTIL_CONFIG"
 )
 EOF
-    echo -e "$LOG_ADD Default config file created at $ADBUTIL_CONFIG"
-else
-    # Ensure all required constants are present in the config file
-    declare -A default_values=(
-        ["ADBUTIL_SKIP_ASK_INSTALL"]="false"
-        ["ADBUTIL_SKIP_ASK_UPDATE"]="false"
-        ["ADBUTIL_USE_GUM"]="true"
-        ["ADBUTIL_CREDENTIALS"]="(\"Set your credentials in $ADBUTIL_CONFIG config file|Username|Password\")"
-        ["ADBUTIL_PASTE_STRINGS"]="(\"Set your strings to paste in $ADBUTIL_CONFIG config file|String\")"
-    )
-
-    for key in "${!default_values[@]}"; do
-        if ! grep -q "^$key=" "$ADBUTIL_CONFIG"; then
-            echo "$key=${default_values[$key]}" >> "$ADBUTIL_CONFIG"
-            echo -e "$LOG_ADD Added missing config key: $key with default value"
-        fi
-    done
-fi
-source "$ADBUTIL_CONFIG"
-
-ADBUTIL_USE_GUM=${ADBUTIL_USE_GUM:=true}
-ADBUTIL_SKIP_ASK_INSTALL=${ADBUTIL_SKIP_ASK_INSTALL:=false}
-ADBUTIL_SKIP_ASK_UPDATE=${ADBUTIL_SKIP_ASK_UPDATE:=false}
-ADBUTIL_CREDENTIALS=${ADBUTIL_CREDENTIALS:=("Set your credentials in $ADBUTIL_CONFIG config file|Username|Password")}
-ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=("Set your strings to paste in $ADBUTIL_CONFIG config file|String")}
 
 ## Dependencies
 isCommandExist() { command -v "$1" &> /dev/null; }
 isCommandExist adb || { log "$LOG_FAIL" "ADB is not installed. Please install it and try again."; exit 1; }
 isCommandExist gum || { if $ADBUTIL_USE_GUM; then log "$LOG_WARN" "Gum is not installed. Install it for a nicer UI"; ADBUTIL_USE_GUM=false; fi; }
 
-## Install
-if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
-    log "$LOG_WARN" "adbutil is not installed on your system"
-    read -p "Do you want to install it? [y/N]: " -r
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        #Create bin folder and add it to path if missing
-        mkdir -p "$DOWNLOAD_FOLDER"
-        [ -f "$HOME/.bashrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.bashrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.bashrc"
-        [ -f "$HOME/.zshrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.zshrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.zshrc"
-        [ -f "$HOME/.config/fish/config.fish" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.config/fish/config.fish" && echo "set -gx PATH \$PATH $DOWNLOAD_FOLDER" >> "$HOME/.config/fish/config.fish"
+## Install & Update
+download() {
+    action=$1:="install"
 
-        # Download and install adbutil
-        if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
-            chmod +x "$DONWLOAD_LOCATION"
-            log "$LOG_DONE" "adbutil installed successfully."
-        else
-            log "$LOG_FAIL" "Failed to download adbutil."
-            log "$LOG_INDENT" "You can manually download it from: $DONWLOAD_URL"
-            log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
-        fi
+    #Create bin folder and add it to path if missing
+    mkdir -p "$DOWNLOAD_FOLDER"
+    [ -f "$HOME/.bashrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.bashrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.bashrc"
+    [ -f "$HOME/.zshrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.zshrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.zshrc"
+    [ -f "$HOME/.config/fish/config.fish" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.config/fish/config.fish" && echo "set -gx PATH \$PATH $DOWNLOAD_FOLDER" >> "$HOME/.config/fish/config.fish"
+
+    # Download and install adbutil
+    if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
+        chmod +x "$DONWLOAD_LOCATION"
+        log "$LOG_DONE" "adbutil $action succeed."
     else
-        log "$LOG_WARN" "You can disable this prompt by setting ADBUTIL_SKIP_ASK_INSTALL=true in $ADBUTIL_CONFIG"
+        log "$LOG_FAIL" "Failed to $action adbutil."
+        log "$LOG_INDENT" "You can manually download it from: $DONWLOAD_URL"
+        log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
     fi
+
     read -p "Press enter to continue to ADB Utility main menu."
-fi
-
-## Update
-#if [ "$LOCAL_VERSION" != "$REMOTE_VERSION" ]; then
-#    log "$LOG_WARN" "New version of adbutil is available."
-#    log "$LOG_INDENT" "Current version: $LOCAL_VERSION"
-#    log "$LOG_INDENT" "Latest version: $REMOTE_VERSION"
-#    read -p "Do you want to update it now? [y/N]: " -r
-#    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-#        if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
-#            chmod +x "$DONWLOAD_LOCATION"
-#            log "$LOG_DONE" "adbutil updated successfully."
-#            exec "$DONWLOAD_LOCATION" "$@"
-#        else
-#            log "$LOG_FAIL" "Failed to update adbutil."
-#            log "$LOG_INDENT" "You can manually update it downloading latest version from:"
-#            log "$LOG_INDENT" "$DONWLOAD_URL"
-#            log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
-#        fi
-#    else
-#        log "$LOG_WARN" "You can disable this prompt by setting ADBUTIL_SKIP_ASK_UPDATE=true in $ADBUTIL_CONFIG"
-#    fi
-#    read -p "Press enter to continue to ADB Utility main menu."
-#fi
-
+    adbutil
+    exit 0
+}
 
 ## Menu
 menu() {
@@ -168,16 +142,31 @@ menu() {
 
 ### ADB Utility
 
+## Constants
+MENU_INSTALL="📥 Install adbutil"
+MENU_UPDATE="📥 Update adbutil ($LOCAL_VERSION -> $REMOTE_VERSION)"
+MENU_PACKAGES="📦 Third Party Packages"
+MENU_CREDENTIALS="🔐 Credentials"
+MENU_PASTE_STRINGS="📝 Paste Strings"
+MENU_LAYOUT_BOUNDS="🎯 Layout Bounds"
+MENU_PROXY="🌐 Proxy"
+MENU_DEMO_MODE="📸 Demo Mode"
+MENU_MEDIA_SESSION="🎬 Media Session"
+MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
+MENU_SYNC_TIME="⏱️ Sync Time"
+MENU_EXIT="🚪 Exit"
+MENU_BACK="↩️ Back"
+
 ## Actions
 actionPackage() {
     clear; echo "📦 Selected Package: $1"
-    case "$(menu "Launch" "Force Stop" "Uninstall" "Clear Data" "Open Info Page" "Back")" in
+    case "$(menu "Launch" "Force Stop" "Uninstall" "Clear Data" "Open Info Page" "$MENU_BACK")" in
         "Launch") adb shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
         "Force Stop") adb shell am force-stop "$1" ;;
         "Uninstall") adb uninstall "$1"; menuPackages; return ;;
         "Clear Data") adb shell pm clear "$1" ;;
         "Open Info Page") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$1" > /dev/null 2>&1 ;;
-        "Back") menuPackages; return ;;
+        "$MENU_BACK") menuPackages; return ;;
     esac
     actionPackage "$1"
 }
@@ -186,10 +175,10 @@ actionCredentials() {
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title user pass <<< "$cred"
         if [ "$title" == "$1" ]; then
-            case "$(menu "Username ($user)" "Password ($pass)" "Back")" in
+            case "$(menu "Username ($user)" "Password ($pass)" "$MENU_BACK")" in
                 "Username ($user)") adb shell input text "$user" ;;
                 "Password ($pass)") adb shell input text "$pass" ;;
-                "Back") menuCredentials; return ;;
+                "$MENU_BACK") menuCredentials; return ;;
             esac
             break
         fi
@@ -197,7 +186,7 @@ actionCredentials() {
     actionCredentials "$1"
 }
 actionPasteString() {
-    clear; echo "📋 Paste Strings for Category: $1"
+    clear; echo "📝 Paste Strings for Category: $1"
     values=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category value <<< "$string"
@@ -205,9 +194,9 @@ actionPasteString() {
             values+=("$value")
         fi
     done
-    selected_value=$(menu "${values[@]}" "Back")
+    selected_value=$(menu "${values[@]}" "$MENU_BACK")
     case "$selected_value" in
-        "Back") menuPasteStrings; return ;;
+        "$MENU_BACK") menuPasteStrings; return ;;
         *) adb shell input text "$selected_value" ;;
     esac
 }
@@ -245,27 +234,27 @@ actionRestartDevice() { adb reboot; }
 
 ## Menus
 menuPackages() {
-    clear; echo "📦 Third Party Packages"
+    clear; echo "$MENU_PACKAGES"
     packages=($(adb shell cmd package list packages -3 | cut -f 2 -d ":"))  # cut "package:" from "package:com.android.bluetooth"
     sortedPackages=($(echo "${packages[@]}" | tr ' ' '\n' | sort))
-    options=("Refresh" "${sortedPackages[@]}" "Back")
+    options=("Refresh" "${sortedPackages[@]}" "$MENU_BACK")
     selected_option=$(menu "${options[@]}")
     case "$selected_option" in
         "Refresh") menuPackages ;;
-        "Back") menuMain ;;
+        "$MENU_BACK") menuMain ;;
         *) actionPackage "$selected_option" ;;
     esac
 }
 menuCredentials() {
-    clear; echo "🔐 Credentials"
+    clear; echo "$MENU_CREDENTIALS"
     titles=()
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title _ _ <<< "$cred"
         titles+=("$title")
     done
-    selected_option=$(menu "${titles[@]}" "Back")
+    selected_option=$(menu "${titles[@]}" "$MENU_BACK")
     case "$selected_option" in
-        "Back") menuMain; return ;;
+        "$MENU_BACK") menuMain; return ;;
         *)
             actionCredentials "$selected_option"
         ;;
@@ -273,15 +262,15 @@ menuCredentials() {
     menuCredentials
 }
 menuPasteStrings() {
-    clear; echo "📋 Paste Strings"
+    clear; echo "$MENU_PASTE_STRINGS"
     categories=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category _ <<< "$string"
         categories+=("$category")
     done
-    selected_option=$(menu "${categories[@]}" "Back")
+    selected_option=$(menu "${categories[@]}" "$MENU_BACK")
     case "$selected_option" in
-        "Back") menuMain; return ;;
+        "$MENU_BACK") menuMain; return ;;
         *)
             actionPasteString "$selected_option"
         ;;
@@ -289,76 +278,95 @@ menuPasteStrings() {
     menuPasteStrings
 }
 menuLayoutBounds() {
-    clear; echo "🎯 Layout Bounds"
-    case "$(menu "On" "Off" "Back")" in
+    clear; echo "$MENU_LAYOUT_BOUNDS"
+    case "$(menu "On" "Off" "$MENU_BACK")" in
         "On") actionLayoutBounds "true" ;;
         "Off") actionLayoutBounds "false" ;;
-        "Back") menuMain; return ;;
+        "$MENU_BACK") menuMain; return ;;
     esac
     menuLayoutBounds
 }
 menuProxy() {
-    clear; echo "🌐 Proxy"
-    case "$(menu "On" "Off" "Status" "Back")" in
+    clear; echo "$MENU_PROXY"
+    case "$(menu "On" "Off" "Status" "$MENU_BACK")" in
         "On") actionProxyOn ;;
         "Off") actionProxyOff ;;
         "Status") actionProxyStatus ;;
-        "Back") menuMain; return ;;
+        "$MENU_BACK") menuMain; return ;;
     esac
     menuProxy
 }
 menuDemoMode() {
-    clear; echo "📸 Demo Mode"
-    case "$(menu "On" "Off" "Back")" in
+    clear; echo "$MENU_DEMO_MODE"
+    case "$(menu "On" "Off" "$MENU_BACK")" in
         "On") actionDemoMode true ;;
         "Off") actionDemoMode false ;;
-        "Back") menuMain; return ;;
+        "$MENU_BACK") menuMain; return ;;
     esac;
     menuDemoMode
 }
 menuMediaSession() {
-    clear; echo "🎬 Media Session"
-    case "$(menu "play-pause" "play" "pause" "fast-forward" "rewind" "Info" "Back")" in
-        "Back") menuMain; return ;;
+    clear; echo "$MENU_MEDIA_SESSION"
+    case "$(menu "play-pause" "play" "pause" "fast-forward" "rewind" "Info" "$MENU_BACK")" in
+        "$MENU_BACK") menuMain; return ;;
         "Info") adb shell dumpsys media_session ;;
         *) actionMediaSession "$REPLY" ;;
     esac
     menuMediaSession
 }
 menuFireTVDevTools() {
-    clear; echo "🔧 Fire TV Dev Tools"
-    case "$(menu "Open" "Back")" in
+    clear; echo "$MENU_FIRE_TV_DEV_TOOLS"
+    case "$(menu "Open" "$MENU_BACK")" in
         "Open") actionOpenFireTVDevTools ;;
-        "Back") menuMain; return ;;
+        "$MENU_BACK") menuMain; return ;;
     esac
     menuFireTVDevTools
 }
 menuSyncTime() {
-    clear; echo "⏱️ Sync Time"
-    case "$(menu "Sync time automatically (needs root)" "Open settings page" "Restart device" "Back")" in
+    clear; echo "$MENU_SYNC_TIME"
+    case "$(menu "Sync time automatically (needs root)" "Open settings page" "Restart device" "$MENU_BACK")" in
         "Sync time automatically (needs root)") actionSetSystemDate ;;
         "Open settings page") actionOpenDateSettings ;;
         "Restart device") actionRestartDevice ;;
-        "Back") menuMain; return;;
+        "$MENU_BACK") menuMain; return;;
     esac
     menuSyncTime
 }
 
 ## Main Menu
 menuMain() {
-    clear; echo "📱 Main menu:"
-    selected_option=$(menu "📦 Packages" "🔐 Credentials" "📋 Paste Strings" "🎯 Layout Bounds" "🌐 Proxy" "📸 Demo Mode" "🎬 Media Session" "🔧 Fire TV Dev Tools" "⏱️ Sync Time" "🚪 Exit")
-    case "$selected_option" in
-        "📦 Packages") menuPackages ;;
-        "🔐 Credentials") menuCredentials ;;
-        "📋 Paste Strings") menuPasteStrings ;;
-        "🎯 Layout Bounds") menuLayoutBounds ;;
-        "🌐 Proxy") menuProxy ;;
-        "📸 Demo Mode") menuDemoMode ;;
-        "🎬 Media Session") menuMediaSession ;;
-        "🔧 Fire TV Dev Tools") menuFireTVDevTools ;;
-        "⏱️ Sync Time") menuSyncTime ;;
-        "🚪 Exit") exit 0 ;;
+    clear; echo "📱 Main menu"
+    menuItems=()
+    if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
+        menuItems+=("$MENU_INSTALL")
+    elif [ "$LOCAL_VERSION" != "$REMOTE_VERSION" ]; then
+        menuItems+=("$MENU_UPDATE")
+    fi
+    menuItems+=(
+        "$MENU_PACKAGES" 
+        "$MENU_CREDENTIALS" 
+        "$MENU_PASTE_STRINGS" 
+        "$MENU_LAYOUT_BOUNDS" 
+        "$MENU_PROXY" 
+        "$MENU_DEMO_MODE" 
+        "$MENU_MEDIA_SESSION" 
+        "$MENU_FIRE_TV_DEV_TOOLS" 
+        "$MENU_SYNC_TIME" 
+        "$MENU_EXIT"
+        )
+    case "$(menu "${menuItems[@]}")" in
+        "$MENU_INSTALL") download "install" ;;
+        "$MENU_UPDATE") download "update" ;;
+        "$MENU_PACKAGES") menuPackages ;;
+        "$MENU_CREDENTIALS") menuCredentials ;;
+        "$MENU_PASTE_STRINGS") menuPasteStrings ;;
+        "$MENU_LAYOUT_BOUNDS") menuLayoutBounds ;;
+        "$MENU_PROXY") menuProxy ;;
+        "$MENU_DEMO_MODE") menuDemoMode ;;
+        "$MENU_MEDIA_SESSION") menuMediaSession ;;
+        "$MENU_FIRE_TV_DEV_TOOLS") menuFireTVDevTools ;;
+        "$MENU_SYNC_TIME") menuSyncTime ;;
+        "$MENU_EXIT") exit 0 ;;
     esac
     menuMain
 }
