@@ -23,7 +23,7 @@ Created by [Gergely Marosi](https://github.com/marosige)
 - **ADB** installed and added to your `PATH`  
 - (Optional but recommended) [Gum](https://github.com/charmbracelet/gum) for a better terminal UI experience
 
-## 🚀 Quick Setup (macOS)
+### 🚀 Quick Setup (macOS)
 
 Install [Homebrew](https://brew.sh/), then use it to install ADB and Gum:
 
