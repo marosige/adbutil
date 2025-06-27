@@ -8,6 +8,7 @@ Created by [Gergely Marosi](https://github.com/marosige)
 
 - 📦 Manage installed packages: launch, uninstall, clear data, and more  
 - 🔐 Store and inject saved credentials into apps  
+- 📝 Paste strings into apps from your saved list  
 - 🎯 Toggle layout bounds for debugging UI  
 - 🌐 Set or check proxy settings on the device  
 - 📸 Toggle Android’s demo mode (perfect for screenshots)  
@@ -21,6 +22,16 @@ Created by [Gergely Marosi](https://github.com/marosige)
 
 - **ADB** installed and added to your `PATH`  
 - (Optional but recommended) [Gum](https://github.com/charmbracelet/gum) for a better terminal UI experience
+
+## 🚀 Quick Setup (macOS)
+
+Install [Homebrew](https://brew.sh/), then use it to install ADB and Gum:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install android-platform-tools
+brew install gum
+```
 
 ---
 
