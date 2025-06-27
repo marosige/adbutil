@@ -16,8 +16,7 @@ DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main
 DOWNLOAD_FOLDER="$HOME/bin"
 DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
 LOCAL_VERSION="1.0.0"
-REMOTE_VERSION="1.0.0"
-#REMOTE_VERSION=$(curl -s -L "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
+REMOTE_VERSION=$(curl -s -L "$DONWLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
 ## Logging
 BOLD='\033[1m'
@@ -36,7 +35,14 @@ LOG_WARN="${YELLOW}[!]${NC}"
 LOG_FAIL="${BRIGHT_RED}[✖]${NC}"
 LOG_INDENT="   "
 
-log() { echo -e "$1 $2"; }
+logTitle() { echo -e "${LOG_TITLE} $1"; }
+logTask() { echo -e "${LOG_TASK} $1"; }
+logInfo() { echo -e "${LOG_INFO} $1"; }
+logDone() { echo -e "${LOG_DONE} $1"; }
+logAdd() { echo -e "${LOG_ADD} $1"; }
+logWarn() { echo -e "${LOG_WARN} $1"; }
+logFail() { echo -e "${LOG_FAIL} $1"; }
+logIndent() { echo -e "${LOG_INDENT} $1"; }
 
 ## Configuration
 ADBUTIL_CONFIG="$HOME/.adbutil"
@@ -98,12 +104,12 @@ EOF
 
 ## Dependencies
 isCommandExist() { command -v "$1" &> /dev/null; }
-isCommandExist adb || { log "$LOG_FAIL" "ADB is not installed. Please install it and try again."; exit 1; }
-isCommandExist gum || { if $ADBUTIL_USE_GUM; then log "$LOG_WARN" "Gum is not installed. Install it for a nicer UI"; ADBUTIL_USE_GUM=false; fi; }
+isCommandExist adb || { logFail "ADB is not installed. Please install it and try again."; exit 1; }
+isCommandExist gum || { if $ADBUTIL_USE_GUM; then logWarn "Gum is not installed. Install it for a nicer UI"; ADBUTIL_USE_GUM=false; fi; }
 
 ## Install & Update
 download() {
-    action=$1:="install"
+    action=$1 # install or update
 
     #Create bin folder and add it to path if missing
     mkdir -p "$DOWNLOAD_FOLDER"
@@ -114,11 +120,11 @@ download() {
     # Download and install adbutil
     if curl -s -L -o "$DONWLOAD_LOCATION" "$DONWLOAD_URL"; then
         chmod +x "$DONWLOAD_LOCATION"
-        log "$LOG_DONE" "adbutil $action succeed."
+        logDone "adbutil $action succeed."
     else
-        log "$LOG_FAIL" "Failed to $action adbutil."
-        log "$LOG_INDENT" "You can manually download it from: $DONWLOAD_URL"
-        log "$LOG_INDENT" "Don't forget to make it executable and move it to your PATH."
+        logFail "Failed to $action adbutil."
+        logIndent "You can manually download it from: $DONWLOAD_URL"
+        logIndent "Don't forget to make it executable and move it to your PATH."
     fi
 
     read -p "Press enter to continue to ADB Utility main menu."
@@ -129,8 +135,8 @@ download() {
 ## Menu
 menu() {
     options=("$@")
-    if [ "$ADBUTIL_USE_GUM" = "true" ]; then
-        gum choose "${options[@]}"
+    if $ADBUTIL_USE_GUM; then
+        gum choose --height 15 "${options[@]}"
     else
         PS3="Please select an option: "
         select choice in "${options[@]}"; do
@@ -153,9 +159,9 @@ MENU_PROXY="🌐 Proxy"
 MENU_DEMO_MODE="📸 Demo Mode"
 MENU_MEDIA_SESSION="🎬 Media Session"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
-MENU_SYNC_TIME="⏱️ Sync Time"
+MENU_SYNC_TIME="⏱️  Sync Time"
 MENU_EXIT="🚪 Exit"
-MENU_BACK="↩️ Back"
+MENU_BACK="↩️  Back"
 
 ## Actions
 actionPackage() {
@@ -207,9 +213,9 @@ actionProxyStatus() {
     clear
     proxy=$(adb shell settings get global http_proxy)
     if [ -z "$proxy" ] || [ "$proxy" == "null" ] || [ "$proxy" == ":0" ]; then
-        log "$LOG_INFO" "Proxy is not set"
+        logInfo "Proxy is not set"
     else
-        log "$LOG_INFO" "Proxy set to: $proxy"
+        logInfo "Proxy set to: $proxy"
     fi
     read -p "Press enter to get back to menu."
 }
@@ -307,10 +313,16 @@ menuDemoMode() {
 }
 menuMediaSession() {
     clear; echo "$MENU_MEDIA_SESSION"
-    case "$(menu "play-pause" "play" "pause" "fast-forward" "rewind" "Info" "$MENU_BACK")" in
+    options=("⏯️  play-pause" "▶️  play" "⏸️  pause" "⏩ fast-forward" "⏪ rewind" "ℹ️  Info" "$MENU_BACK")
+    selected=$(menu "${options[@]}")
+    case "$selected" in
         "$MENU_BACK") menuMain; return ;;
-        "Info") adb shell dumpsys media_session ;;
-        *) actionMediaSession "$REPLY" ;;
+        "ℹ️  Info") adb shell dumpsys media_session ;;
+        *)
+            # Remove emoji and whitespace before passing to actionMediaSession
+            event=$(echo "$selected" | sed -E 's/^[^ ]+ //')
+            actionMediaSession "$event"
+        ;;
     esac
     menuMediaSession
 }

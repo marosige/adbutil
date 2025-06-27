@@ -55,7 +55,7 @@ send_adb_command() {
     local command="$@"
     for device in "${SELECTED_DEVICES[@]}"; do
         echo "Running on $device: adb -s $device $command"
-        adb -s "$device" $command
+        adb -s "$device" "$command"
     done
 }
 
