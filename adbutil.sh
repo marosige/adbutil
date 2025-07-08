@@ -53,6 +53,7 @@ ADBUTIL_SKIP_ASK_UPDATE=${ADBUTIL_SKIP_ASK_UPDATE:=false}
 ADBUTIL_USE_GUM=${ADBUTIL_USE_GUM:=true}
 ADBUTIL_CREDENTIALS=${ADBUTIL_CREDENTIALS:=("Set your credentials in $ADBUTIL_CONFIG config file|Username|Password")}
 ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=("Set your strings to paste in $ADBUTIL_CONFIG config file|String")}
+ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=()}
 
 rm -f "$ADBUTIL_CONFIG"
 
@@ -96,6 +97,19 @@ EOF
 # Add the paste strings values to the config
 for str in "${ADBUTIL_PASTE_STRINGS[@]}"; do
     echo "    \"$str\"" >> "$ADBUTIL_CONFIG"
+done
+
+cat <<EOF >> "$ADBUTIL_CONFIG"
+)
+EOF
+
+cat <<EOF >> "$ADBUTIL_CONFIG"
+# Package filter (wildcards supported, e.g. "com.example.*")
+ADBUTIL_PACKAGE_FILTER=(
+EOF
+
+for filter in "${ADBUTIL_PACKAGE_FILTER[@]}"; do
+    echo "    \"$filter\"" >> "$ADBUTIL_CONFIG"
 done
 
 cat <<EOF >> "$ADBUTIL_CONFIG"
@@ -249,12 +263,42 @@ actionRestartDevice() { adb reboot; }
 ## Menus
 menuPackages() {
     clear;
+    local show_filtered=${1:-true}
     packages=($(adb shell cmd package list packages -3 | cut -f 2 -d ":"))  # cut "package:" from "package:com.android.bluetooth"
+
+    # Filter packages based on ADBUTIL_PACKAGE_FILTER
+    if [ "$show_filtered" = true ] && [ ${#ADBUTIL_PACKAGE_FILTER[@]} -gt 0 ]; then
+        filteredPackages=()
+        for package in "${packages[@]}"; do
+            for filter in "${ADBUTIL_PACKAGE_FILTER[@]}"; do
+                # Support wildcards
+                if [[ "$package" == $filter ]]; then
+                    filteredPackages+=("$package")
+                    break
+                fi 
+            done
+        done
+        packages=("${filteredPackages[@]}")
+    fi
+
     sortedPackages=($(echo "${packages[@]}" | tr ' ' '\n' | sort))
-    options=("🔄 Refresh" "${sortedPackages[@]}" "$MENU_BACK")
+
+    options=()
+    if [ ${#ADBUTIL_PACKAGE_FILTER[@]} -gt 0 ]; then
+        if [ "$show_filtered" = true ]; then
+            options=("📦 Show all packages (remove filter)")
+        else
+            options=("🔍 Show only filtered packages")
+        fi
+    fi
+    options+=("🔄 Refresh" "${sortedPackages[@]}" "$MENU_BACK")
+
+
     selected_option=$(menu "$MENU_PACKAGES" "${options[@]}")
     case "$selected_option" in
-        "Refresh") menuPackages ;;
+        "🔄 Refresh") menuPackages "$show_filtered" ;;
+        "📦 Show all packages (remove filter)") menuPackages false ;;
+        "🔍 Show only filtered packages") menuPackages true ;;
         "$MENU_BACK") menuMain ;;
         *) actionPackage "$selected_option" ;;
     esac
