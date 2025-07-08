@@ -101,9 +101,7 @@ done
 
 cat <<EOF >> "$ADBUTIL_CONFIG"
 )
-EOF
 
-cat <<EOF >> "$ADBUTIL_CONFIG"
 # Package filter (wildcards supported, e.g. "com.example.*")
 ADBUTIL_PACKAGE_FILTER=(
 EOF

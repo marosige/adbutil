@@ -28,22 +28,25 @@ Created by [Gergely Marosi](https://github.com/marosige)
 Install [Homebrew](https://brew.sh/), then use it to install ADB and Gum:
 
 ```bash
+# Install homebrew
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Install adb
 brew install android-platform-tools
+# Install gum
 brew install gum
 ```
 
 ---
 
-## 🧰 Installation
+## 🧰 Test / Installation
 
-Run directly via `curl`:
+Test it by running directly via `curl`:
 
 ```bash
 curl -s https://raw.githubusercontent.com/marosige/adbutil/main/adbutil.sh | bash
 ```
 
-You can then run it at any time using:
+To install `adbutil` permanently, choose the **📥 Install adbutil** option from the menu. After installation, you can launch it anytime by running:
 
 ```bash
 adbutil
@@ -77,6 +80,11 @@ ADBUTIL_CREDENTIALS=(
 ADBUTIL_PASTE_STRINGS=(
     "register|email@example.com"
     "promocode|AAAA-1111-BBBB-2222"
+)
+
+# Package filter (wildcards supported, e.g. "com.example.*")
+ADBUTIL_PACKAGE_FILTER=(
+    "my.package.*"
 )
 ```
 
