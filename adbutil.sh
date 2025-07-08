@@ -15,7 +15,7 @@
 DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
 DOWNLOAD_FOLDER="$HOME/bin"
 DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
-LOCAL_VERSION="1.0.0"
+LOCAL_VERSION="1.1.0"
 REMOTE_VERSION=$(curl -s -L "$DONWLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
 ## Logging
