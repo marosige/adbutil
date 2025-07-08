@@ -135,9 +135,15 @@ download() {
 ## Menu
 menu() {
     options=("$@")
+    title="${options[0]}"
+    unset options[0] # Remove title from options
+    
     if $ADBUTIL_USE_GUM; then
-        gum choose --height 15 "${options[@]}"
+        term_height=$(tput lines)
+        gum_height=$((term_height - 4)) # Subtract 4 for gum UI elements
+        gum choose --height "$gum_height" --header "$title" "${options[@]}"
     else
+         echo "$title" >&2
         PS3="Please select an option: "
         select choice in "${options[@]}"; do
             [ -n "$choice" ] && echo "$choice" && break
@@ -159,14 +165,14 @@ MENU_PROXY="🌐 Proxy"
 MENU_DEMO_MODE="📸 Demo Mode"
 MENU_MEDIA_SESSION="🎬 Media Session"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
-MENU_SYNC_TIME="⏱️  Sync Time"
+MENU_SYNC_TIME="⏱️ Sync Time"
 MENU_EXIT="🚪 Exit"
 MENU_BACK="↩️  Back"
 
 ## Actions
 actionPackage() {
-    clear; echo "📦 Selected Package: $1"
-    case "$(menu "Launch" "Force Stop" "Uninstall" "Clear Data" "Open Info Page" "$MENU_BACK")" in
+    clear;
+    case "$(menu "📦 $1" "Launch" "Force Stop" "Uninstall" "Clear Data" "Open Info Page" "$MENU_BACK")" in
         "Launch") adb shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
         "Force Stop") adb shell am force-stop "$1" ;;
         "Uninstall") adb uninstall "$1"; menuPackages; return ;;
@@ -177,13 +183,15 @@ actionPackage() {
     actionPackage "$1"
 }
 actionCredentials() {
-    clear; echo "🔐 Credentials for User: $1"
+    clear;
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title user pass <<< "$cred"
         if [ "$title" == "$1" ]; then
-            case "$(menu "Username ($user)" "Password ($pass)" "$MENU_BACK")" in
-                "Username ($user)") adb shell input text "$user" ;;
-                "Password ($pass)") adb shell input text "$pass" ;;
+            case "$(menu "🔐 $title" "👤 Username: $user" " ⇥ Tab Key" "🔑 Password: $pass" " ⏎ Enter Key" "$MENU_BACK")" in
+                "👤 Username: $user") adb shell input text "$user" ;;
+                " ⇥ Tab Key") adb shell input keyevent 61 ;;   # 61 is KEYCODE_TAB
+                "🔑 Password: $pass") adb shell input text "$pass" ;;
+                " ⏎ Enter Key") adb shell input keyevent 66 ;; # 66 is KEYCODE_ENTER
                 "$MENU_BACK") menuCredentials; return ;;
             esac
             break
@@ -192,7 +200,7 @@ actionCredentials() {
     actionCredentials "$1"
 }
 actionPasteString() {
-    clear; echo "📝 Paste Strings for Category: $1"
+    clear;
     values=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category value <<< "$string"
@@ -200,7 +208,7 @@ actionPasteString() {
             values+=("$value")
         fi
     done
-    selected_value=$(menu "${values[@]}" "$MENU_BACK")
+    selected_value=$(menu "📝 $category" "${values[@]}" "$MENU_BACK")
     case "$selected_value" in
         "$MENU_BACK") menuPasteStrings; return ;;
         *) adb shell input text "$selected_value" ;;
@@ -240,11 +248,11 @@ actionRestartDevice() { adb reboot; }
 
 ## Menus
 menuPackages() {
-    clear; echo "$MENU_PACKAGES"
+    clear;
     packages=($(adb shell cmd package list packages -3 | cut -f 2 -d ":"))  # cut "package:" from "package:com.android.bluetooth"
     sortedPackages=($(echo "${packages[@]}" | tr ' ' '\n' | sort))
-    options=("Refresh" "${sortedPackages[@]}" "$MENU_BACK")
-    selected_option=$(menu "${options[@]}")
+    options=("🔄 Refresh" "${sortedPackages[@]}" "$MENU_BACK")
+    selected_option=$(menu "$MENU_PACKAGES" "${options[@]}")
     case "$selected_option" in
         "Refresh") menuPackages ;;
         "$MENU_BACK") menuMain ;;
@@ -252,13 +260,13 @@ menuPackages() {
     esac
 }
 menuCredentials() {
-    clear; echo "$MENU_CREDENTIALS"
+    clear;
     titles=()
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title _ _ <<< "$cred"
         titles+=("$title")
     done
-    selected_option=$(menu "${titles[@]}" "$MENU_BACK")
+    selected_option=$(menu "$MENU_CREDENTIALS" "${titles[@]}" "$MENU_BACK")
     case "$selected_option" in
         "$MENU_BACK") menuMain; return ;;
         *)
@@ -268,13 +276,13 @@ menuCredentials() {
     menuCredentials
 }
 menuPasteStrings() {
-    clear; echo "$MENU_PASTE_STRINGS"
+    clear;
     categories=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category _ <<< "$string"
         categories+=("$category")
     done
-    selected_option=$(menu "${categories[@]}" "$MENU_BACK")
+    selected_option=$(menu "$MENU_PASTE_STRINGS" "${categories[@]}" "$MENU_BACK")
     case "$selected_option" in
         "$MENU_BACK") menuMain; return ;;
         *)
@@ -284,8 +292,8 @@ menuPasteStrings() {
     menuPasteStrings
 }
 menuLayoutBounds() {
-    clear; echo "$MENU_LAYOUT_BOUNDS"
-    case "$(menu "On" "Off" "$MENU_BACK")" in
+    clear;
+    case "$(menu "$MENU_LAYOUT_BOUNDS" "On" "Off" "$MENU_BACK")" in
         "On") actionLayoutBounds "true" ;;
         "Off") actionLayoutBounds "false" ;;
         "$MENU_BACK") menuMain; return ;;
@@ -293,8 +301,8 @@ menuLayoutBounds() {
     menuLayoutBounds
 }
 menuProxy() {
-    clear; echo "$MENU_PROXY"
-    case "$(menu "On" "Off" "Status" "$MENU_BACK")" in
+    clear;
+    case "$(menu "$MENU_PROXY" "On" "Off" "Status" "$MENU_BACK")" in
         "On") actionProxyOn ;;
         "Off") actionProxyOff ;;
         "Status") actionProxyStatus ;;
@@ -303,8 +311,8 @@ menuProxy() {
     menuProxy
 }
 menuDemoMode() {
-    clear; echo "$MENU_DEMO_MODE"
-    case "$(menu "On" "Off" "$MENU_BACK")" in
+    clear;
+    case "$(menu "$MENU_DEMO_MODE" "On" "Off" "$MENU_BACK")" in
         "On") actionDemoMode true ;;
         "Off") actionDemoMode false ;;
         "$MENU_BACK") menuMain; return ;;
@@ -312,8 +320,8 @@ menuDemoMode() {
     menuDemoMode
 }
 menuMediaSession() {
-    clear; echo "$MENU_MEDIA_SESSION"
-    options=("⏯️  play-pause" "▶️  play" "⏸️  pause" "⏩ fast-forward" "⏪ rewind" "ℹ️  Info" "$MENU_BACK")
+    clear;
+    options=("$MENU_MEDIA_SESSION" "⏯️  play-pause" "▶️  play" "⏸️  pause" "⏩ fast-forward" "⏪ rewind" "ℹ️  Info" "$MENU_BACK")
     selected=$(menu "${options[@]}")
     case "$selected" in
         "$MENU_BACK") menuMain; return ;;
@@ -327,16 +335,16 @@ menuMediaSession() {
     menuMediaSession
 }
 menuFireTVDevTools() {
-    clear; echo "$MENU_FIRE_TV_DEV_TOOLS"
-    case "$(menu "Open" "$MENU_BACK")" in
+    clear;
+    case "$(menu "$MENU_FIRE_TV_DEV_TOOLS" "Open" "$MENU_BACK")" in
         "Open") actionOpenFireTVDevTools ;;
         "$MENU_BACK") menuMain; return ;;
     esac
     menuFireTVDevTools
 }
 menuSyncTime() {
-    clear; echo "$MENU_SYNC_TIME"
-    case "$(menu "Sync time automatically (needs root)" "Open settings page" "Restart device" "$MENU_BACK")" in
+    clear;
+    case "$(menu "$MENU_SYNC_TIME" "Sync time automatically (needs root)" "Open settings page" "Restart device" "$MENU_BACK")" in
         "Sync time automatically (needs root)") actionSetSystemDate ;;
         "Open settings page") actionOpenDateSettings ;;
         "Restart device") actionRestartDevice ;;
@@ -347,7 +355,7 @@ menuSyncTime() {
 
 ## Main Menu
 menuMain() {
-    clear; echo "📱 Main menu"
+    clear;
     menuItems=()
     if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
         menuItems+=("$MENU_INSTALL")
@@ -366,7 +374,7 @@ menuMain() {
         "$MENU_SYNC_TIME" 
         "$MENU_EXIT"
         )
-    case "$(menu "${menuItems[@]}")" in
+    case "$(menu "📱 Main menu" "${menuItems[@]}")" in
         "$MENU_INSTALL") download "install" ;;
         "$MENU_UPDATE") download "update" ;;
         "$MENU_PACKAGES") menuPackages ;;
