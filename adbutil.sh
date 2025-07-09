@@ -187,48 +187,52 @@ MENU_OPEN_SETTINGS="⚙️  Open settings screen"
 
 ## Actions
 actionPackage() {
+    local param_package="$1"
+    local param_show_filtered=${2:-true}
     clear;
     local MENU_LAUNCH="🚀 Launch"
     local MENU_FORCE_STOP="⛔ Force Stop"
-    local MENU_UNINSTALL="🗑️ Uninstall"
+    local MENU_UNINSTALL="🗑️  Uninstall"
     local MENU_CLEAR_DATA="🧹 Clear Data"
-    case "$(menu "📦 $1" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_UNINSTALL" "$MENU_CLEAR_DATA" "$MENU_INFO" "$MENU_BACK")" in
-        "$MENU_LAUNCH") adb shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
-        "$MENU_FORCE_STOP") adb shell am force-stop "$1" ;;
-        "$MENU_UNINSTALL") adb uninstall "$1"; menuPackages; return ;;
-        "$MENU_CLEAR_DATA") adb shell pm clear "$1" ;;
-        "$MENU_INFO") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$1" > /dev/null 2>&1 ;;
-        "$MENU_BACK") menuPackages; return ;;
+    case "$(menu "📦 $param_package" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_UNINSTALL" "$MENU_CLEAR_DATA" "$MENU_INFO" "$MENU_BACK")" in
+        "$MENU_LAUNCH") adb shell monkey -p "$param_package" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
+        "$MENU_FORCE_STOP") adb shell am force-stop "$param_package" ;;
+        "$MENU_UNINSTALL") adb uninstall "$param_package"; menuPackages; return ;;
+        "$MENU_CLEAR_DATA") adb shell pm clear "$param_package" ;;
+        "$MENU_INFO") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$param_package" > /dev/null 2>&1 ;;
+        "$MENU_BACK") menuPackages "$param_show_filtered"; return ;;
     esac
-    actionPackage "$1"
+    actionPackage "$param_package" "$param_show_filtered"
 }
 actionCredentials() {
+    local param_title="$1"
     clear;
     local MENU_USERNAME="👤 Username"
-    local MENU_TAB=" ⇥ Tab Key"
     local MENU_PASSWORD="🔑 Password"
+    local MENU_TAB=" ⇥ Tab Key"
     local MENU_ENTER=" ⏎ Enter Key"
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title user pass <<< "$cred"
-        if [ "$title" == "$1" ]; then
-            case "$(menu "🔐 $title" "$MENU_USERNAME: $user" "$MENU_TAB" "$MENU_PASSWORD: $pass" "$MENU_ENTER" "$MENU_BACK")" in
+        if [ "$title" == "$param_title" ]; then
+            case "$(menu "🔐 $title" "$MENU_USERNAME: $user" "$MENU_PASSWORD: $pass" "$MENU_TAB" "$MENU_ENTER" "$MENU_BACK")" in
                 "$MENU_USERNAME: $user") adb shell input text "$user" ;;
-                "$MENU_TAB") adb shell input keyevent 61 ;;   # 61 is KEYCODE_TAB
                 "$MENU_PASSWORD: $pass") adb shell input text "$pass" ;;
+                "$MENU_TAB") adb shell input keyevent 61 ;;   # 61 is KEYCODE_TAB
                 "$MENU_ENTER") adb shell input keyevent 66 ;; # 66 is KEYCODE_ENTER
                 "$MENU_BACK") menuCredentials; return ;;
             esac
             break
         fi
     done
-    actionCredentials "$1"
+    actionCredentials "$param_title"
 }
 actionPasteString() {
+    local param_category="$1"
     clear;
     values=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category value <<< "$string"
-        if [ "$category" == "$1" ]; then
+        if [ "$category" == "$param_category" ]; then
             values+=("$value")
         fi
     done
@@ -237,6 +241,7 @@ actionPasteString() {
         "$MENU_BACK") menuPasteStrings; return ;;
         *) adb shell input text "$selected_value" ;;
     esac
+    actionPasteString "$param_category"
 }
 actionLayoutBounds() { adb shell setprop debug.layout "$1"; adb shell service call activity 1599295570 > /dev/null 2>&1; }
 actionProxyOn() { adb shell settings put global http_proxy "$(ipconfig getifaddr en0):8888"; }
@@ -272,15 +277,15 @@ actionRestartDevice() { adb reboot; }
 
 ## Menus
 menuPackages() {
+    local param_show_filtered=${1:-true}
     clear;
     local MENU_SHOW_ALL="📦 Show all packages (remove filter)"
     local MENU_SHOW_FILTERED="🔍 Show only filtered packages"
     local MENU_REFRESH="🔄 Refresh"
-    local show_filtered=${1:-true}
     packages=($(adb shell cmd package list packages -3 | cut -f 2 -d ":"))  # cut "package:" from "package:com.android.bluetooth"
 
     # Filter packages based on ADBUTIL_PACKAGE_FILTER
-    if [ "$show_filtered" = true ] && [ ${#ADBUTIL_PACKAGE_FILTER[@]} -gt 0 ]; then
+    if [ "$param_show_filtered" = true ] && [ ${#ADBUTIL_PACKAGE_FILTER[@]} -gt 0 ]; then
         filteredPackages=()
         for package in "${packages[@]}"; do
             for filter in "${ADBUTIL_PACKAGE_FILTER[@]}"; do
@@ -298,7 +303,7 @@ menuPackages() {
 
     options=()
     if [ ${#ADBUTIL_PACKAGE_FILTER[@]} -gt 0 ]; then
-        if [ "$show_filtered" = true ]; then
+        if [ "$param_show_filtered" = true ]; then
             options+=("$MENU_SHOW_ALL")
         else
             options+=("$MENU_SHOW_FILTERED")
@@ -308,11 +313,11 @@ menuPackages() {
 
     selected_option=$(menu "$MENU_PACKAGES" "${options[@]}")
     case "$selected_option" in
-        "$MENU_REFRESH") menuPackages "$show_filtered" ;;
+        "$MENU_REFRESH") menuPackages "$param_show_filtered" ;;
         "$MENU_SHOW_ALL") menuPackages false ;;
         "$MENU_SHOW_FILTERED") menuPackages true ;;
         "$MENU_BACK") menuMain ;;
-        *) actionPackage "$selected_option" ;;
+        *) actionPackage "$selected_option" "$param_show_filtered" ;;
     esac
 }
 menuCredentials() {
@@ -336,7 +341,9 @@ menuPasteStrings() {
     categories=()
     for string in "${ADBUTIL_PASTE_STRINGS[@]}"; do
         IFS='|' read -r category _ <<< "$string"
-        categories+=("$category")
+        if [[ ! " ${categories[*]} " =~ " ${category} " ]]; then
+            categories+=("$category")
+        fi
     done
     selected_option=$(menu "$MENU_PASTE_STRINGS" "${categories[@]}" "$MENU_BACK")
     case "$selected_option" in

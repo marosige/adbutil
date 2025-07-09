@@ -4,6 +4,10 @@ A powerful interactive Bash utility for Android development, powered by ADB. Sup
 
 Created by [Gergely Marosi](https://github.com/marosige)
 
+## 📽 Demo
+
+![Demo](assets/demo.gif)
+
 ## ✨ Features
 
 - 📦 Manage installed packages: launch, uninstall, clear data, and more  
