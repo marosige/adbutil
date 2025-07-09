@@ -177,33 +177,45 @@ MENU_PROXY="🌐 Proxy"
 MENU_DEMO_MODE="📸 Demo Mode"
 MENU_MEDIA_SESSION="🎬 Media Session"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
-MENU_SYNC_TIME="⏱️ Sync Time"
+MENU_SYNC_TIME="⏱️  Sync Time"
 MENU_EXIT="🚪 Exit"
 MENU_BACK="↩️  Back"
+MENU_ON="🟢 Enable"
+MENU_OFF="🔴 Disable"
+MENU_INFO="ℹ️  Info"
+MENU_OPEN_SETTINGS="⚙️  Open settings screen"
 
 ## Actions
 actionPackage() {
     clear;
-    case "$(menu "📦 $1" "Launch" "Force Stop" "Uninstall" "Clear Data" "Open Info Page" "$MENU_BACK")" in
-        "Launch") adb shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
-        "Force Stop") adb shell am force-stop "$1" ;;
-        "Uninstall") adb uninstall "$1"; menuPackages; return ;;
-        "Clear Data") adb shell pm clear "$1" ;;
-        "Open Info Page") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$1" > /dev/null 2>&1 ;;
+    local MENU_LAUNCH="🚀 Launch"
+    local MENU_FORCE_STOP="⛔ Force Stop"
+    local MENU_UNINSTALL="🗑️ Uninstall"
+    local MENU_CLEAR_DATA="🧹 Clear Data"
+    case "$(menu "📦 $1" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_UNINSTALL" "$MENU_CLEAR_DATA" "$MENU_INFO" "$MENU_BACK")" in
+        "$MENU_LAUNCH") adb shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
+        "$MENU_FORCE_STOP") adb shell am force-stop "$1" ;;
+        "$MENU_UNINSTALL") adb uninstall "$1"; menuPackages; return ;;
+        "$MENU_CLEAR_DATA") adb shell pm clear "$1" ;;
+        "$MENU_INFO") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$1" > /dev/null 2>&1 ;;
         "$MENU_BACK") menuPackages; return ;;
     esac
     actionPackage "$1"
 }
 actionCredentials() {
     clear;
+    local MENU_USERNAME="👤 Username"
+    local MENU_TAB=" ⇥ Tab Key"
+    local MENU_PASSWORD="🔑 Password"
+    local MENU_ENTER=" ⏎ Enter Key"
     for cred in "${ADBUTIL_CREDENTIALS[@]}"; do
         IFS='|' read -r title user pass <<< "$cred"
         if [ "$title" == "$1" ]; then
-            case "$(menu "🔐 $title" "👤 Username: $user" " ⇥ Tab Key" "🔑 Password: $pass" " ⏎ Enter Key" "$MENU_BACK")" in
-                "👤 Username: $user") adb shell input text "$user" ;;
-                " ⇥ Tab Key") adb shell input keyevent 61 ;;   # 61 is KEYCODE_TAB
-                "🔑 Password: $pass") adb shell input text "$pass" ;;
-                " ⏎ Enter Key") adb shell input keyevent 66 ;; # 66 is KEYCODE_ENTER
+            case "$(menu "🔐 $title" "$MENU_USERNAME: $user" "$MENU_TAB" "$MENU_PASSWORD: $pass" "$MENU_ENTER" "$MENU_BACK")" in
+                "$MENU_USERNAME: $user") adb shell input text "$user" ;;
+                "$MENU_TAB") adb shell input keyevent 61 ;;   # 61 is KEYCODE_TAB
+                "$MENU_PASSWORD: $pass") adb shell input text "$pass" ;;
+                "$MENU_ENTER") adb shell input keyevent 66 ;; # 66 is KEYCODE_ENTER
                 "$MENU_BACK") menuCredentials; return ;;
             esac
             break
@@ -261,6 +273,9 @@ actionRestartDevice() { adb reboot; }
 ## Menus
 menuPackages() {
     clear;
+    local MENU_SHOW_ALL="📦 Show all packages (remove filter)"
+    local MENU_SHOW_FILTERED="🔍 Show only filtered packages"
+    local MENU_REFRESH="🔄 Refresh"
     local show_filtered=${1:-true}
     packages=($(adb shell cmd package list packages -3 | cut -f 2 -d ":"))  # cut "package:" from "package:com.android.bluetooth"
 
@@ -284,19 +299,18 @@ menuPackages() {
     options=()
     if [ ${#ADBUTIL_PACKAGE_FILTER[@]} -gt 0 ]; then
         if [ "$show_filtered" = true ]; then
-            options=("📦 Show all packages (remove filter)")
+            options+=("$MENU_SHOW_ALL")
         else
-            options=("🔍 Show only filtered packages")
+            options+=("$MENU_SHOW_FILTERED")
         fi
     fi
-    options+=("🔄 Refresh" "${sortedPackages[@]}" "$MENU_BACK")
-
+    options+=("$MENU_REFRESH" "${sortedPackages[@]}" "$MENU_BACK")
 
     selected_option=$(menu "$MENU_PACKAGES" "${options[@]}")
     case "$selected_option" in
-        "🔄 Refresh") menuPackages "$show_filtered" ;;
-        "📦 Show all packages (remove filter)") menuPackages false ;;
-        "🔍 Show only filtered packages") menuPackages true ;;
+        "$MENU_REFRESH") menuPackages "$show_filtered" ;;
+        "$MENU_SHOW_ALL") menuPackages false ;;
+        "$MENU_SHOW_FILTERED") menuPackages true ;;
         "$MENU_BACK") menuMain ;;
         *) actionPackage "$selected_option" ;;
     esac
@@ -335,39 +349,44 @@ menuPasteStrings() {
 }
 menuLayoutBounds() {
     clear;
-    case "$(menu "$MENU_LAYOUT_BOUNDS" "On" "Off" "$MENU_BACK")" in
-        "On") actionLayoutBounds "true" ;;
-        "Off") actionLayoutBounds "false" ;;
+    case "$(menu "$MENU_LAYOUT_BOUNDS" "$MENU_ON" "$MENU_OFF" "$MENU_BACK")" in
+        "$MENU_ON") actionLayoutBounds "true" ;;
+        "$MENU_OFF") actionLayoutBounds "false" ;;
         "$MENU_BACK") menuMain; return ;;
     esac
     menuLayoutBounds
 }
 menuProxy() {
     clear;
-    case "$(menu "$MENU_PROXY" "On" "Off" "Status" "$MENU_BACK")" in
-        "On") actionProxyOn ;;
-        "Off") actionProxyOff ;;
-        "Status") actionProxyStatus ;;
+    case "$(menu "$MENU_PROXY" "$MENU_ON" "$MENU_OFF" "$MENU_INFO" "$MENU_BACK")" in
+        "$MENU_ON") actionProxyOn ;;
+        "$MENU_OFF") actionProxyOff ;;
+        "$MENU_INFO") actionProxyStatus ;;
         "$MENU_BACK") menuMain; return ;;
     esac
     menuProxy
 }
 menuDemoMode() {
     clear;
-    case "$(menu "$MENU_DEMO_MODE" "On" "Off" "$MENU_BACK")" in
-        "On") actionDemoMode true ;;
-        "Off") actionDemoMode false ;;
+    case "$(menu "$MENU_DEMO_MODE" "$MENU_ON" "$MENU_OFF" "$MENU_BACK")" in
+        "$MENU_ON") actionDemoMode true ;;
+        "$MENU_OFF") actionDemoMode false ;;
         "$MENU_BACK") menuMain; return ;;
     esac;
     menuDemoMode
 }
 menuMediaSession() {
     clear;
-    options=("$MENU_MEDIA_SESSION" "⏯️  play-pause" "▶️  play" "⏸️  pause" "⏩ fast-forward" "⏪ rewind" "ℹ️  Info" "$MENU_BACK")
+    local MENU_MEDIA_PLAY_PAUSE="⏯️  play-pause"
+    local MENU_MEDIA_PLAY="▶️  play"
+    local MENU_MEDIA_PAUSE="⏸️  pause"
+    local MENU_MEDIA_FF="⏩ fast-forward"
+    local MENU_MEDIA_RW="⏪ rewind"
+    options=("$MENU_MEDIA_SESSION" "$MENU_MEDIA_PLAY_PAUSE" "$MENU_MEDIA_PLAY" "$MENU_MEDIA_PAUSE" "$MENU_MEDIA_FF" "$MENU_MEDIA_RW" "$MENU_INFO" "$MENU_BACK")
     selected=$(menu "${options[@]}")
     case "$selected" in
         "$MENU_BACK") menuMain; return ;;
-        "ℹ️  Info") adb shell dumpsys media_session ;;
+        "$MENU_INFO") adb shell dumpsys media_session ;;
         *)
             # Remove emoji and whitespace before passing to actionMediaSession
             event=$(echo "$selected" | sed -E 's/^[^ ]+ //')
@@ -378,18 +397,20 @@ menuMediaSession() {
 }
 menuFireTVDevTools() {
     clear;
-    case "$(menu "$MENU_FIRE_TV_DEV_TOOLS" "Open" "$MENU_BACK")" in
-        "Open") actionOpenFireTVDevTools ;;
+    case "$(menu "$MENU_FIRE_TV_DEV_TOOLS" "$MENU_OPEN_SETTINGS" "$MENU_BACK")" in
+        "$MENU_OPEN_SETTINGS") actionOpenFireTVDevTools ;;
         "$MENU_BACK") menuMain; return ;;
     esac
     menuFireTVDevTools
 }
 menuSyncTime() {
     clear;
-    case "$(menu "$MENU_SYNC_TIME" "Sync time automatically (needs root)" "Open settings page" "Restart device" "$MENU_BACK")" in
-        "Sync time automatically (needs root)") actionSetSystemDate ;;
-        "Open settings page") actionOpenDateSettings ;;
-        "Restart device") actionRestartDevice ;;
+    local MENU_SYNC_TIME_AUTO="🕒 Sync time automatically (needs root)"
+    local MENU_SYNC_TIME_RESTART="🔄 Restart device"
+    case "$(menu "$MENU_SYNC_TIME" "$MENU_SYNC_TIME_AUTO" "$MENU_OPEN_SETTINGS" "$MENU_SYNC_TIME_RESTART" "$MENU_BACK")" in
+        "$MENU_SYNC_TIME_AUTO") actionSetSystemDate ;;
+        "$MENU_OPEN_SETTINGS") actionOpenDateSettings ;;
+        "$MENU_SYNC_TIME_RESTART") actionRestartDevice ;;
         "$MENU_BACK") menuMain; return;;
     esac
     menuSyncTime

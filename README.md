@@ -38,15 +38,15 @@ brew install gum
 
 ---
 
-## 🧰 Test / Installation
+## 🧰 Try or Install
 
-Test it by running directly via `curl`:
+Try it by running directly via `curl`:
 
 ```bash
 curl -s https://raw.githubusercontent.com/marosige/adbutil/main/adbutil.sh | bash
 ```
 
-To install `adbutil` permanently, choose the **📥 Install adbutil** option from the menu. After installation, you can launch it anytime by running:
+If you like it, select  **📥 Install adbutil** option from the menu. After installation, you can launch it anytime by running:
 
 ```bash
 adbutil
