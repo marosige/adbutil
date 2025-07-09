@@ -67,29 +67,48 @@ When you run `adbutil` for the first time, it creates a configuration file at:
 You can customize the following options in that file:
 
 ```bash
-# Preferences
-ADBUTIL_SKIP_ASK_INSTALL=false     # Skip the install prompt
-ADBUTIL_SKIP_ASK_UPDATE=false      # Skip the update prompt
-ADBUTIL_USE_GUM=true               # Use gum for nicer UI if installed
+### ADB Utility Configuration
+### https://github.com/marosige/adbutil
+
+## Preferences
+ADBUTIL_SKIP_ASK_INSTALL=false
+ADBUTIL_SKIP_ASK_UPDATE=false
+ADBUTIL_USE_GUM=true
+
+## Private values
 
 # Credentials
 # Format: "Title|Username|Password"
+# Examples: "Admin|adminuser|password"
+#           "Free user|freeuser|password"
+#           "Subsciber|subuser|password"
 ADBUTIL_CREDENTIALS=(
-    "Admin|adminuser|password"
-    "Free user|freeuser|password"
+    "Admin|adminuser|p4ssw0rd"
+    "Free user|freeuser|p4ssw0rd"
+    "Subsciber|subuser|p4ssw0rd"
 )
 
 # Strings to paste
 # Format: "Category|String"
+# Examples: "register|email"
+#           "register|password"
+#           "register|country"
+#           "promocode|AAAA-1111-BBBB-2222"
+#           "promocode|BBBB-3333-CCCC-4444"
 ADBUTIL_PASTE_STRINGS=(
-    "register|email@example.com"
+    "register|my@email.com"
+    "register|p4ssw0rd"
+    "register|Hungary"
     "promocode|AAAA-1111-BBBB-2222"
+    "promocode|BBBB-3333-CCCC-4444"
 )
 
 # Package filter (wildcards supported, e.g. "com.example.*")
 ADBUTIL_PACKAGE_FILTER=(
-    "my.package.*"
+    "com.google.*"
+    "com.samsung.*"
 )
+
 ```
 
 > 💡 Tip: You can disable install/update prompts by setting the related flags to `true` in the config.
