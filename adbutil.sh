@@ -15,7 +15,7 @@
 DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
 DOWNLOAD_FOLDER="$HOME/bin"
 DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
-LOCAL_VERSION="1.1.0"
+LOCAL_VERSION="1.1.1"
 REMOTE_VERSION=$(curl -s -L "$DONWLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
 ## Logging
@@ -179,11 +179,11 @@ MENU_MEDIA_SESSION="🎬 Media Session"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
 MENU_SYNC_TIME="⏱️  Sync Time"
 MENU_EXIT="🚪 Exit"
-MENU_BACK="↩️  Back"
+MENU_BACK="↩️ Back"
 MENU_ON="🟢 Enable"
 MENU_OFF="🔴 Disable"
-MENU_INFO="ℹ️  Info"
-MENU_OPEN_SETTINGS="⚙️  Open settings screen"
+MENU_INFO="ℹ️ Info"
+MENU_OPEN_SETTINGS="⚙️ Open settings screen"
 
 ## Actions
 actionPackage() {
@@ -192,7 +192,7 @@ actionPackage() {
     clear;
     local MENU_LAUNCH="🚀 Launch"
     local MENU_FORCE_STOP="⛔ Force Stop"
-    local MENU_UNINSTALL="🗑️  Uninstall"
+    local MENU_UNINSTALL="🗑️ Uninstall"
     local MENU_CLEAR_DATA="🧹 Clear Data"
     case "$(menu "📦 $param_package" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_UNINSTALL" "$MENU_CLEAR_DATA" "$MENU_INFO" "$MENU_BACK")" in
         "$MENU_LAUNCH") adb shell monkey -p "$param_package" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
@@ -384,9 +384,9 @@ menuDemoMode() {
 }
 menuMediaSession() {
     clear;
-    local MENU_MEDIA_PLAY_PAUSE="⏯️  play-pause"
-    local MENU_MEDIA_PLAY="▶️  play"
-    local MENU_MEDIA_PAUSE="⏸️  pause"
+    local MENU_MEDIA_PLAY_PAUSE="⏯️ play-pause"
+    local MENU_MEDIA_PLAY="▶️ play"
+    local MENU_MEDIA_PAUSE="⏸️ pause"
     local MENU_MEDIA_FF="⏩ fast-forward"
     local MENU_MEDIA_RW="⏪ rewind"
     options=("$MENU_MEDIA_SESSION" "$MENU_MEDIA_PLAY_PAUSE" "$MENU_MEDIA_PLAY" "$MENU_MEDIA_PAUSE" "$MENU_MEDIA_FF" "$MENU_MEDIA_RW" "$MENU_INFO" "$MENU_BACK")
