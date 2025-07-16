@@ -178,6 +178,7 @@ MENU_DEMO_MODE="📸 Demo Mode"
 MENU_MEDIA_SESSION="🎬 Media Session"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
 MENU_SYNC_TIME="⏱️  Sync Time"
+MENU_DEVICE_INFO="ℹ️ Device Info"
 MENU_EXIT="🚪 Exit"
 MENU_BACK="↩️ Back"
 MENU_ON="🟢 Enable"
@@ -422,6 +423,47 @@ menuSyncTime() {
     esac
     menuSyncTime
 }
+menuDeviceInfo() {
+    clear
+    echo -e "${BRIGHT_BLUE}Fetching essential device info for debugging...${NC}"
+    echo
+
+    keys=(
+        "ro.product.manufacturer"
+        "ro.product.model"
+        "ro.product.device"
+        "ro.build.version.release"
+        "ro.build.version.sdk"
+        "ro.build.id"
+        "ro.build.version.security_patch"
+        "ro.build.fingerprint"
+        "ro.serialno"
+    )
+
+    labels=(
+        "Manufacturer"
+        "Model"
+        "Device Codename"
+        "Android Version"
+        "API Level"
+        "Build ID"
+        "Security Patch"
+        "Build Fingerprint"
+        "Serial Number"
+    )
+
+    for i in "${!keys[@]}"; do
+        value=$(adb shell getprop "${keys[$i]}" | tr -d '[]')
+        printf "%b%-22s%b: %b%s%b\n" \
+            "$BOLD" "${labels[$i]}" "$NC" \
+            "$BRIGHT_GREEN" "$value" "$NC"
+    done
+
+    echo
+    echo -e "${YELLOW}Press enter to continue to main menu.${NC}"
+    read -p ""
+    menuMain
+}
 
 ## Main Menu
 menuMain() {
@@ -442,6 +484,7 @@ menuMain() {
         "$MENU_MEDIA_SESSION" 
         "$MENU_FIRE_TV_DEV_TOOLS" 
         "$MENU_SYNC_TIME" 
+        "$MENU_DEVICE_INFO"
         "$MENU_EXIT"
         )
     case "$(menu "📱 Main menu" "${menuItems[@]}")" in
@@ -456,6 +499,7 @@ menuMain() {
         "$MENU_MEDIA_SESSION") menuMediaSession ;;
         "$MENU_FIRE_TV_DEV_TOOLS") menuFireTVDevTools ;;
         "$MENU_SYNC_TIME") menuSyncTime ;;
+        "$MENU_DEVICE_INFO") menuDeviceInfo ;;
         "$MENU_EXIT") exit 0 ;;
     esac
     menuMain
