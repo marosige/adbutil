@@ -425,7 +425,7 @@ menuSyncTime() {
 }
 menuDeviceInfo() {
     clear
-    echo -e "${BRIGHT_BLUE}Fetching essential device info for debugging...${NC}"
+    echo -e "${BRIGHT_BLUE}Fetching device info...${NC}"
     echo
 
     keys=(
