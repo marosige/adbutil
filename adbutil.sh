@@ -44,6 +44,12 @@ logWarn() { echo -e "${LOG_WARN} $1"; }
 logFail() { echo -e "${LOG_FAIL} $1"; }
 logIndent() { echo -e "${LOG_INDENT} $1"; }
 
+waitForEnter() {
+    local DESTINATION="${1:+ to $1}"  # Adds " to <destination>" only if $1 is given
+    echo -e "${YELLOW}Press enter to continue${DESTINATION:-...}${NC}"
+    read -r
+}
+
 ## Configuration
 ADBUTIL_CONFIG="$HOME/.adbutil"
 [ -f "$ADBUTIL_CONFIG" ] && source "$ADBUTIL_CONFIG"
@@ -139,7 +145,7 @@ download() {
         logIndent "Don't forget to make it executable and move it to your PATH."
     fi
 
-    read -p "Press enter to continue to ADB Utility main menu."
+    waitForEnter "ADB Utility main menu."
     adbutil
     exit 0
 }
@@ -255,7 +261,7 @@ actionProxyStatus() {
     else
         logInfo "Proxy set to: $proxy"
     fi
-    read -p "Press enter to get back to menu."
+    waitForEnter
 }
 actionMediaSession() { adb shell input keyevent "$1"; }
 actionDemoMode() {
@@ -425,7 +431,7 @@ menuSyncTime() {
 }
 menuDeviceInfo() {
     clear
-    echo -e "${BRIGHT_BLUE}Fetching device info...${NC}"
+    echo -e "${BRIGHT_BLUE}Device information:${NC}"
     echo
 
     keys=(
@@ -460,8 +466,7 @@ menuDeviceInfo() {
     done
 
     echo
-    echo -e "${YELLOW}Press enter to continue to main menu.${NC}"
-    read -p ""
+    waitForEnter
     menuMain
 }
 
