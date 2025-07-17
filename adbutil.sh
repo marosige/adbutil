@@ -201,11 +201,13 @@ actionPackage() {
     local MENU_FORCE_STOP="⛔ Force Stop"
     local MENU_UNINSTALL="🗑️ Uninstall"
     local MENU_CLEAR_DATA="🧹 Clear Data"
-    case "$(menu "📦 $param_package" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_UNINSTALL" "$MENU_CLEAR_DATA" "$MENU_INFO" "$MENU_BACK")" in
+    local MENU_HOME="🏠 Home (Background)"
+    case "$(menu "📦 $param_package" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_HOME" "$MENU_CLEAR_DATA" "$MENU_UNINSTALL" "$MENU_INFO" "$MENU_BACK")" in
         "$MENU_LAUNCH") adb shell monkey -p "$param_package" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
         "$MENU_FORCE_STOP") adb shell am force-stop "$param_package" ;;
-        "$MENU_UNINSTALL") adb uninstall "$param_package"; menuPackages; return ;;
+        "$MENU_HOME") adb shell input keyevent 3 ;;
         "$MENU_CLEAR_DATA") adb shell pm clear "$param_package" ;;
+        "$MENU_UNINSTALL") adb uninstall "$param_package"; menuPackages; return ;;
         "$MENU_INFO") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$param_package" > /dev/null 2>&1 ;;
         "$MENU_BACK") menuPackages "$param_show_filtered"; return ;;
     esac
