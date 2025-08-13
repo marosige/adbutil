@@ -15,7 +15,7 @@
 DONWLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main/adbutil.sh"
 DOWNLOAD_FOLDER="$HOME/bin"
 DONWLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
-LOCAL_VERSION="1.1.1"
+LOCAL_VERSION="1.1.2"
 REMOTE_VERSION=$(curl -s -L "$DONWLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
 
 ## Logging
@@ -59,7 +59,7 @@ ADBUTIL_SKIP_ASK_UPDATE=${ADBUTIL_SKIP_ASK_UPDATE:=false}
 ADBUTIL_USE_GUM=${ADBUTIL_USE_GUM:=true}
 ADBUTIL_CREDENTIALS=${ADBUTIL_CREDENTIALS:=("Set your credentials in $ADBUTIL_CONFIG config file|Username|Password")}
 ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=("Set your strings to paste in $ADBUTIL_CONFIG config file|String")}
-ADBUTIL_PASTE_STRINGS=${ADBUTIL_PASTE_STRINGS:=()}
+ADBUTIL_DEEPLINKS=${ADBUTIL_DEEPLINKS:=("Set your deeplinks in $ADBUTIL_CONFIG config file|Link")}
 
 rm -f "$ADBUTIL_CONFIG"
 
@@ -114,6 +114,20 @@ EOF
 
 for filter in "${ADBUTIL_PACKAGE_FILTER[@]}"; do
     echo "    \"$filter\"" >> "$ADBUTIL_CONFIG"
+done
+
+cat <<EOF >> "$ADBUTIL_CONFIG"
+)
+
+# Deeplinks
+# Format: "Name|Link"
+# Examples: "Open Wifi|android.settings.WIFI_SETTINGS"
+            "Google|https://www.google.com"
+ADBUTIL_DEEPLINKS=(
+EOF
+
+for deeplink in "${ADBUTIL_DEEPLINKS[@]}"; do
+    echo "    \"$deeplink\"" >> "$ADBUTIL_CONFIG"
 done
 
 cat <<EOF >> "$ADBUTIL_CONFIG"
@@ -178,6 +192,7 @@ MENU_UPDATE="📥 Update adbutil ($LOCAL_VERSION -> $REMOTE_VERSION)"
 MENU_PACKAGES="📦 Third Party Packages"
 MENU_CREDENTIALS="🔐 Credentials"
 MENU_PASTE_STRINGS="📝 Paste Strings"
+MENU_DEEPLINKS="🔗 Deeplinks"
 MENU_LAYOUT_BOUNDS="🎯 Layout Bounds"
 MENU_PROXY="🌐 Proxy"
 MENU_DEMO_MODE="📸 Demo Mode"
@@ -283,6 +298,37 @@ actionOpenFireTVDevTools() { adb shell am start com.amazon.ssm/com.amazon.ssm.Co
 actionSetSystemDate() { adb root ; adb shell "date $(date +%m%d%H%M%G.%S) ; am broadcast -a android.intent.action.TIME_SET";}
 actionOpenDateSettings() { adb shell am start -a android.settings.DATE_SETTINGS; }
 actionRestartDevice() { adb reboot; }
+
+## Deeplink Menu
+menuDeeplinks() {
+    clear;
+    local names=()
+    local links=()
+    for deeplink in "${ADBUTIL_DEEPLINKS[@]}"; do
+        IFS='|' read -r name link <<< "$deeplink"
+        names+=("$name")
+        links+=("$link")
+    done
+    names+=("$MENU_BACK")
+    local selected=$(menu "$MENU_DEEPLINKS" "${names[@]}")
+    if [ "$selected" == "$MENU_BACK" ]; then
+        menuMain
+        return
+    fi
+    # Find the link for the selected name
+    for i in "${!names[@]}"; do
+        if [ "${names[$i]}" == "$selected" ]; then
+            if [[ "${links[$i]}" =~ ^https?:// ]]; then
+                adb shell am start -a android.intent.action.VIEW -d "${links[$i]}"
+            else
+                adb shell am start -a "${links[$i]}"
+            fi
+            break
+        fi
+    done
+    waitForEnter "Deeplink"
+    menuDeeplinks
+}
 
 ## Menus
 menuPackages() {
@@ -485,6 +531,7 @@ menuMain() {
         "$MENU_PACKAGES" 
         "$MENU_CREDENTIALS" 
         "$MENU_PASTE_STRINGS" 
+        "$MENU_DEEPLINKS"
         "$MENU_LAYOUT_BOUNDS" 
         "$MENU_PROXY" 
         "$MENU_DEMO_MODE" 
@@ -500,6 +547,7 @@ menuMain() {
         "$MENU_PACKAGES") menuPackages ;;
         "$MENU_CREDENTIALS") menuCredentials ;;
         "$MENU_PASTE_STRINGS") menuPasteStrings ;;
+        "$MENU_DEEPLINKS") menuDeeplinks ;;
         "$MENU_LAYOUT_BOUNDS") menuLayoutBounds ;;
         "$MENU_PROXY") menuProxy ;;
         "$MENU_DEMO_MODE") menuDemoMode ;;
@@ -511,5 +559,3 @@ menuMain() {
     esac
     menuMain
 }
-
-menuMain
