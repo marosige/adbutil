@@ -267,6 +267,35 @@ actionPasteString() {
     esac
     actionPasteString "$param_category"
 }
+menuDeeplinks() {
+    clear;
+    local names=()
+    local links=()
+    for deeplink in "${ADBUTIL_DEEPLINKS[@]}"; do
+        IFS='|' read -r name link <<< "$deeplink"
+        names+=("$name")
+        links+=("$link")
+    done
+    names+=("$MENU_BACK")
+    local selected=$(menu "$MENU_DEEPLINKS" "${names[@]}")
+    if [ "$selected" == "$MENU_BACK" ]; then
+        menuMain
+        return
+    fi
+    # Find the link for the selected name
+    for i in "${!names[@]}"; do
+        if [ "${names[$i]}" == "$selected" ]; then
+            if [[ "${links[$i]}" =~ ^https?:// ]]; then
+                adb shell am start -a android.intent.action.VIEW -d "${links[$i]}"
+            else
+                adb shell am start -a "${links[$i]}"
+            fi
+            break
+        fi
+    done
+    menuDeeplinks
+}
+
 actionLayoutBounds() { adb shell setprop debug.layout "$1"; adb shell service call activity 1599295570 > /dev/null 2>&1; }
 actionProxyOn() { adb shell settings put global http_proxy "$(ipconfig getifaddr en0):8888"; }
 actionProxyOff() { adb shell settings put global http_proxy :0; }
@@ -298,37 +327,6 @@ actionOpenFireTVDevTools() { adb shell am start com.amazon.ssm/com.amazon.ssm.Co
 actionSetSystemDate() { adb root ; adb shell "date $(date +%m%d%H%M%G.%S) ; am broadcast -a android.intent.action.TIME_SET";}
 actionOpenDateSettings() { adb shell am start -a android.settings.DATE_SETTINGS; }
 actionRestartDevice() { adb reboot; }
-
-## Deeplink Menu
-menuDeeplinks() {
-    clear;
-    local names=()
-    local links=()
-    for deeplink in "${ADBUTIL_DEEPLINKS[@]}"; do
-        IFS='|' read -r name link <<< "$deeplink"
-        names+=("$name")
-        links+=("$link")
-    done
-    names+=("$MENU_BACK")
-    local selected=$(menu "$MENU_DEEPLINKS" "${names[@]}")
-    if [ "$selected" == "$MENU_BACK" ]; then
-        menuMain
-        return
-    fi
-    # Find the link for the selected name
-    for i in "${!names[@]}"; do
-        if [ "${names[$i]}" == "$selected" ]; then
-            if [[ "${links[$i]}" =~ ^https?:// ]]; then
-                adb shell am start -a android.intent.action.VIEW -d "${links[$i]}"
-            else
-                adb shell am start -a "${links[$i]}"
-            fi
-            break
-        fi
-    done
-    waitForEnter "Deeplink"
-    menuDeeplinks
-}
 
 ## Menus
 menuPackages() {
@@ -559,3 +557,6 @@ menuMain() {
     esac
     menuMain
 }
+
+# Start the main menu
+menuMain
