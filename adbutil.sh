@@ -338,6 +338,43 @@ actionScreenReaderStatus() {
     fi
     waitForEnter
 }
+actionScreenReaderNavigate() {
+    clear
+    logInfo "Screen Reader Navigation Mode"
+    echo
+    logIndent "Arrow keys: Navigate (↑ up, ↓ down, ← left, → right)"
+    logIndent "Space/Enter: Activate current item"
+    logIndent "Tab: Move to next item"
+    logIndent "b: Back button"
+    logIndent "+: Volume up"
+    logIndent "-: Volume down"
+    logIndent "q: Quit navigation mode"
+    echo
+    
+    # Send initial tab to start accessibility focus if nothing is focused
+    adb shell input keyevent 61 > /dev/null 2>&1
+    
+    while true; do
+        read -rsn1 key
+        case "$key" in
+            $'\x1b')  # ESC sequence for arrow keys
+                read -rsn2 key
+                case "$key" in
+                    '[A') adb shell input keyevent 19 ;;  # DPAD_UP
+                    '[B') adb shell input keyevent 20 ;;  # DPAD_DOWN
+                    '[C') adb shell input keyevent 22 ;;  # DPAD_RIGHT
+                    '[D') adb shell input keyevent 21 ;;  # DPAD_LEFT
+                esac
+                ;;
+            ' '|'') adb shell input keyevent 23 ;;  # DPAD_CENTER (Enter/Activate)
+            $'\t') adb shell input keyevent 61 ;;   # TAB
+            'b'|'B') adb shell input keyevent 4 ;;  # BACK button
+            '=') adb shell input keyevent 24 ;;     # VOLUME_UP
+            '-') adb shell input keyevent 25 ;;     # VOLUME_DOWN
+            'q'|'Q') break ;;
+        esac
+    done
+}
 actionOpenFireTVDevTools() { adb shell am start com.amazon.ssm/com.amazon.ssm.ControlPanel > /dev/null 2>&1; }
 actionSetSystemDate() { adb shell "date $(date +%m%d%H%M%G.%S) ; am broadcast -a android.intent.action.TIME_SET";}
 actionOpenDateSettings() { adb shell am start -a android.settings.DATE_SETTINGS; }
@@ -472,9 +509,11 @@ menuMediaSession() {
 }
 menuScreenReader() {
     clear;
-    case "$(menu "$MENU_SCREEN_READER" "$MENU_ON" "$MENU_OFF" "$MENU_INFO" "$MENU_BACK")" in
+    local MENU_NAVIGATE="🧭 Navigate"
+    case "$(menu "$MENU_SCREEN_READER" "$MENU_ON" "$MENU_OFF" "$MENU_NAVIGATE" "$MENU_INFO" "$MENU_BACK")" in
         "$MENU_ON") actionScreenReaderOn ;;
         "$MENU_OFF") actionScreenReaderOff ;;
+        "$MENU_NAVIGATE") actionScreenReaderNavigate ;;
         "$MENU_INFO") actionScreenReaderStatus ;;
         "$MENU_BACK") menuMain; return ;;
     esac
