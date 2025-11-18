@@ -197,6 +197,7 @@ MENU_LAYOUT_BOUNDS="🎯 Layout Bounds"
 MENU_PROXY="🌐 Proxy"
 MENU_DEMO_MODE="📸 Demo Mode"
 MENU_MEDIA_SESSION="🎬 Media Session"
+MENU_SCREEN_READER="📖 Screen Reader"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
 MENU_SYNC_TIME="⏱️  Sync Time"
 MENU_DEVICE_INFO="ℹ️ Device Info"
@@ -323,8 +324,22 @@ actionDemoMode() {
         adb shell settings put global sysui_demo_allowed 0 > /dev/null 2>&1  # Disable demo mode
     fi
 }
+actionScreenReaderOn() { adb shell settings put secure enabled_accessibility_services com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService > /dev/null 2>&1; adb shell settings put secure accessibility_enabled 1 > /dev/null 2>&1; }
+actionScreenReaderOff() { adb shell settings put secure enabled_accessibility_services null > /dev/null 2>&1; adb shell settings put secure accessibility_enabled 0 > /dev/null 2>&1; }
+actionScreenReaderStatus() { 
+    clear
+    enabled=$(adb shell settings get secure accessibility_enabled)
+    services=$(adb shell settings get secure enabled_accessibility_services)
+    if [ "$enabled" = "1" ] && [ -n "$services" ] && [ "$services" != "null" ]; then
+        logInfo "Screen Reader is enabled"
+        logIndent "Services: $services"
+    else
+        logInfo "Screen Reader is disabled"
+    fi
+    waitForEnter
+}
 actionOpenFireTVDevTools() { adb shell am start com.amazon.ssm/com.amazon.ssm.ControlPanel > /dev/null 2>&1; }
-actionSetSystemDate() { adb root ; adb shell "date $(date +%m%d%H%M%G.%S) ; am broadcast -a android.intent.action.TIME_SET";}
+actionSetSystemDate() { adb shell "date $(date +%m%d%H%M%G.%S) ; am broadcast -a android.intent.action.TIME_SET";}
 actionOpenDateSettings() { adb shell am start -a android.settings.DATE_SETTINGS; }
 actionRestartDevice() { adb reboot; }
 
@@ -455,6 +470,16 @@ menuMediaSession() {
     esac
     menuMediaSession
 }
+menuScreenReader() {
+    clear;
+    case "$(menu "$MENU_SCREEN_READER" "$MENU_ON" "$MENU_OFF" "$MENU_INFO" "$MENU_BACK")" in
+        "$MENU_ON") actionScreenReaderOn ;;
+        "$MENU_OFF") actionScreenReaderOff ;;
+        "$MENU_INFO") actionScreenReaderStatus ;;
+        "$MENU_BACK") menuMain; return ;;
+    esac
+    menuScreenReader
+}
 menuFireTVDevTools() {
     clear;
     case "$(menu "$MENU_FIRE_TV_DEV_TOOLS" "$MENU_OPEN_SETTINGS" "$MENU_BACK")" in
@@ -531,6 +556,7 @@ menuMain() {
         "$MENU_PASTE_STRINGS" 
         "$MENU_DEEPLINKS"
         "$MENU_LAYOUT_BOUNDS" 
+        "$MENU_SCREEN_READER" 
         "$MENU_PROXY" 
         "$MENU_DEMO_MODE" 
         "$MENU_MEDIA_SESSION" 
@@ -550,6 +576,7 @@ menuMain() {
         "$MENU_PROXY") menuProxy ;;
         "$MENU_DEMO_MODE") menuDemoMode ;;
         "$MENU_MEDIA_SESSION") menuMediaSession ;;
+        "$MENU_SCREEN_READER") menuScreenReader ;;
         "$MENU_FIRE_TV_DEV_TOOLS") menuFireTVDevTools ;;
         "$MENU_SYNC_TIME") menuSyncTime ;;
         "$MENU_DEVICE_INFO") menuDeviceInfo ;;
