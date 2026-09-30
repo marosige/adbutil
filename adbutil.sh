@@ -254,12 +254,52 @@ MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
 MENU_SYNC_TIME="⏱️  Sync Time"
 MENU_DEVICE_INFO="ℹ️ Device Info"
 MENU_REFRESH="🔄 Refresh"
+MENU_SELECT_DEVICE="📱 Select Device"
 MENU_EXIT="🚪 Exit"
 MENU_BACK="↩️ Back"
 MENU_ON="🟢 Enable"
 MENU_OFF="🔴 Disable"
 MENU_INFO="ℹ️ Info"
 MENU_OPEN_SETTINGS="⚙️ Open settings screen"
+
+## Devices
+# adb targets ANDROID_SERIAL for every command, so selecting a device only has to set it
+
+# Sets DEVICES to "serial|model" of the usable devices and DEVICES_UNAUTHORIZED to the count of unauthorized ones
+loadDevices() {
+    local serial state rest model
+    DEVICES=()
+    DEVICES_UNAUTHORIZED=0
+    while read -r serial state rest; do
+        case "$state" in
+            device)
+                model=$(echo "$rest" | grep -Eo 'model:[^ ]+' | cut -d: -f2)
+                DEVICES+=("$serial|${model:-Unknown}")
+                ;;
+            unauthorized) DEVICES_UNAUTHORIZED=$((DEVICES_UNAUTHORIZED + 1)) ;;
+        esac
+    done < <(adb devices -l 2>/dev/null | tail -n +2)
+}
+
+# Keeps the selected device if it's still connected, picks the only device, otherwise leaves it unselected
+selectDefaultDevice() {
+    local device
+    loadDevices
+    for device in "${DEVICES[@]}"; do
+        [ "${device%%|*}" == "$ANDROID_SERIAL" ] && return
+    done
+    unset ANDROID_SERIAL
+    [ ${#DEVICES[@]} -eq 1 ] && export ANDROID_SERIAL="${DEVICES[0]%%|*}"
+}
+
+deviceLabel() {
+    local device
+    for device in "${DEVICES[@]}"; do
+        [ "${device%%|*}" == "$1" ] && echo "${device#*|} ($1)" && return
+    done
+}
+
+isDeviceConnected() { [ -n "$ANDROID_SERIAL" ] && [ "$(adb get-state 2>/dev/null)" == "device" ]; }
 
 ## Project data
 installedPackages() {
@@ -433,7 +473,7 @@ actionRestartDevice() { adb reboot; }
 
 menuProjects() {
     local last="" choice entry title names
-    while true; do
+    while isDeviceConnected; do
         clear
         names=()
         for entry in "${ADBUTIL_PROJECTS[@]}"; do names+=("${entry%%|*}"); done
@@ -450,14 +490,15 @@ menuProjects() {
 
 # Shows the project menu (no app installed), the app menu (one app) or the app list (multiple apps)
 menuProject() {
-    local project="$1" last="" choice entry title="📁 $project"
+    local project="$1" last="" choice entry title
+    title="📁 $project"
     loadProjectItems "$project"
     for entry in "${ADBUTIL_PROJECTS[@]}"; do
         if [ "${entry%%|*}" == "$project" ] && [ "$entry" != "$project" ]; then
             title+=" (Not Installed)"
         fi
     done
-    while true; do
+    while isDeviceConnected; do
         clear
         loadProjectPackages "$project"
         case ${#PROJECT_PACKAGES[@]} in
@@ -493,7 +534,7 @@ menuProject() {
 menuApp() {
     local projects="$1" package="$2" last="" choice
     loadProjectItems "$projects"
-    while true; do
+    while isDeviceConnected; do
         clear
         choice=$(menu "📁 ${projects//|/ + } - $package" "$last" "$MENU_CONTROL" "${PROJECT_ITEMS[@]}" "$MENU_BACK")
         last="$choice"
@@ -505,12 +546,13 @@ menuApp() {
             "$MENU_BACK"|"") return 0 ;;
         esac
     done
+    return 0
 }
 
 # Returns 1 if the app got uninstalled
 menuControl() {
     local package="$1" title="$2" last="" choice
-    while true; do
+    while isDeviceConnected; do
         clear
         choice=$(menu "$title" "$last" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_HOME" "$MENU_CLEAR_DATA" "$MENU_UNINSTALL" "$MENU_INFO" "$MENU_BACK")
         last="$choice"
@@ -524,6 +566,7 @@ menuControl() {
             "$MENU_BACK"|"") return 0 ;;
         esac
     done
+    return 0
 }
 
 menuCredentials() {
@@ -619,7 +662,7 @@ menuDeeplinks() {
 
 menuAllPackages() {
     local last="" choice packages
-    while true; do
+    while isDeviceConnected; do
         clear
         packages=($(installedPackages))
         choice=$(menu "$MENU_ALL_PACKAGES" "$last" "${packages[@]}" "$MENU_REFRESH" "$MENU_BACK")
@@ -642,7 +685,7 @@ menuAllPackages() {
 ## Device Tool Menus
 menuDeviceTools() {
     local last="" choice
-    while true; do
+    while isDeviceConnected; do
         clear
         choice=$(menu "$MENU_DEVICE_TOOLS" "$last" \
             "$MENU_LAYOUT_BOUNDS" \
@@ -815,18 +858,43 @@ menuDeviceInfo() {
 }
 
 ## Main Menu
+menuSelectDevice() {
+    local device choice labels=()
+    loadDevices
+    for device in "${DEVICES[@]}"; do labels+=("$(deviceLabel "${device%%|*}")"); done
+    clear
+    choice=$(menu "$MENU_SELECT_DEVICE" "$(deviceLabel "$ANDROID_SERIAL")" "${labels[@]}" "$MENU_BACK")
+    for device in "${DEVICES[@]}"; do
+        [ "$(deviceLabel "${device%%|*}")" == "$choice" ] && export ANDROID_SERIAL="${device%%|*}"
+    done
+}
+
 menuMain() {
-    local last="" choice menuItems
+    local last="" choice menuItems title
     while true; do
         clear
+        selectDefaultDevice
         menuItems=()
         if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
             menuItems+=("$MENU_INSTALL")
         elif ! $ADBUTIL_SKIP_ASK_UPDATE && [ -n "$REMOTE_VERSION" ] && isNewerVersion "$REMOTE_VERSION" "$LOCAL_VERSION"; then
             menuItems+=("$MENU_UPDATE")
         fi
-        menuItems+=("$MENU_PROJECTS" "$MENU_ALL_PACKAGES" "$MENU_DEVICE_TOOLS" "$MENU_EXIT")
-        choice=$(menu "📱 Main menu" "$last" "${menuItems[@]}")
+        if [ -n "$ANDROID_SERIAL" ]; then
+            title="📱 $(deviceLabel "$ANDROID_SERIAL")"
+            menuItems+=("$MENU_PROJECTS" "$MENU_ALL_PACKAGES" "$MENU_DEVICE_TOOLS")
+        elif [ ${#DEVICES[@]} -gt 1 ]; then
+            title="📱 ${#DEVICES[@]} devices connected, select one"
+        elif [ "$DEVICES_UNAUTHORIZED" -gt 0 ]; then
+            title="⚠️ Device unauthorized, accept the USB debugging prompt on the device"
+            menuItems+=("$MENU_REFRESH")
+        else
+            title="⚠️ No device connected"
+            menuItems+=("$MENU_REFRESH")
+        fi
+        [ ${#DEVICES[@]} -gt 1 ] && menuItems+=("$MENU_SELECT_DEVICE")
+        menuItems+=("$MENU_EXIT")
+        choice=$(menu "$title" "$last" "${menuItems[@]}")
         last="$choice"
         case "$choice" in
             "$MENU_INSTALL") download "install" ;;
@@ -834,6 +902,7 @@ menuMain() {
             "$MENU_PROJECTS") menuProjects ;;
             "$MENU_ALL_PACKAGES") menuAllPackages ;;
             "$MENU_DEVICE_TOOLS") menuDeviceTools ;;
+            "$MENU_SELECT_DEVICE") menuSelectDevice ;;
             "$MENU_EXIT"|"") exit 0 ;;
         esac
     done
