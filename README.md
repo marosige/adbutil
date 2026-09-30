@@ -10,9 +10,11 @@ Created by [Gergely Marosi](https://github.com/marosige)
 
 ## ✨ Features
 
-- 📦 Manage installed packages: launch, uninstall, clear data, and more  
-- 🔐 Store and inject saved credentials into apps  
+- � Projects: group package regexes, credentials, paste strings and deeplinks per project  
+- 📦 Manage installed packages: launch, force stop, clear data, uninstall, and more  
+- 🔐 Type saved credentials into apps (username, tab, password, enter)  
 - 📝 Paste strings into apps from your saved list  
+- 🔗 Open deeplinks  
 - 🎯 Toggle layout bounds for debugging UI  
 - 🌐 Set or check proxy settings on the device  
 - 📸 Toggle Android’s demo mode (perfect for screenshots)  
@@ -70,6 +72,8 @@ You can customize the following options in that file:
 ### ADB Utility Configuration
 ### https://github.com/marosige/adbutil
 
+ADBUTIL_CONFIG_VERSION=2
+
 ## Preferences
 ADBUTIL_SKIP_ASK_INSTALL=false
 ADBUTIL_SKIP_ASK_UPDATE=false
@@ -77,39 +81,44 @@ ADBUTIL_USE_GUM=true
 
 ## Private values
 
+# Projects
+# Format: "Name|Package regex|Package regex|..."
+# Package regexes are extended regexes matched against the whole package name.
+# Packages are optional, a project can have none, one or many.
+ADBUTIL_PROJECTS=(
+    "Example|com\.example\..*"
+    "Web only"
+)
+
 # Credentials
-# Format: "Title|Username|Password"
-# Examples: "Admin|adminuser|password"
-#           "Free user|freeuser|password"
-#           "Subsciber|subuser|password"
+# Format: "Project|Title|Username|Password"
 ADBUTIL_CREDENTIALS=(
-    "Admin|adminuser|p4ssw0rd"
-    "Free user|freeuser|p4ssw0rd"
-    "Subsciber|subuser|p4ssw0rd"
+    "Example|Admin|adminuser|p4ssw0rd"
+    "Example|Free user|freeuser|p4ssw0rd"
 )
 
 # Strings to paste
-# Format: "Category|String"
-# Examples: "register|email"
-#           "register|password"
-#           "register|country"
-#           "promocode|AAAA-1111-BBBB-2222"
-#           "promocode|BBBB-3333-CCCC-4444"
+# Format: "Project|Label|String"
 ADBUTIL_PASTE_STRINGS=(
-    "register|my@email.com"
-    "register|p4ssw0rd"
-    "register|Hungary"
-    "promocode|AAAA-1111-BBBB-2222"
-    "promocode|BBBB-3333-CCCC-4444"
+    "Example|Email|my@email.com"
+    "Example|Promocode|AAAA-1111-BBBB-2222"
 )
 
-# Package filter (wildcards supported, e.g. "com.example.*")
-ADBUTIL_PACKAGE_FILTER=(
-    "com.google.*"
-    "com.samsung.*"
+# Deeplinks
+# Format: "Project|Name|Link"
+ADBUTIL_DEEPLINKS=(
+    "Example|Open Wifi|android.settings.WIFI_SETTINGS"
+    "Web only|Google|https://www.google.com"
 )
-
 ```
+
+Selecting a project shows:
+
+- **No matching app installed:** credentials, paste strings and deeplinks
+- **One matching app:** the app screen directly (credentials, paste strings, deeplinks, control)
+- **Multiple matching apps:** a list of the apps, then the app screen
+
+> 💡 Updating from 1.x: your old `~/.adbutil` is never modified. adbutil stops with an error and saves a converted copy to `~/.adbutil.v2` with everything in a `Default` project. Split it into projects, then `mv ~/.adbutil.v2 ~/.adbutil`.
 
 > 💡 Tip: You can disable install/update prompts by setting the related flags to `true` in the config.
 
