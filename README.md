@@ -10,17 +10,20 @@ Created by [Gergely Marosi](https://github.com/marosige)
 
 ## ✨ Features
 
-- � Projects: group package regexes, credentials, paste strings and deeplinks per project  
-- 📦 Manage installed packages: launch, force stop, clear data, uninstall, and more  
-- 🔐 Type saved credentials into apps (username, tab, password, enter)  
-- 📝 Paste strings into apps from your saved list  
-- 🔗 Open deeplinks  
-- 🎯 Toggle layout bounds for debugging UI  
-- 🌐 Set or check proxy settings on the device  
-- 📸 Toggle Android’s demo mode (perfect for screenshots)  
-- 🎬 Control media sessions  
-- 🔧 Fire TV Dev Tools quick access  
-- ⏱️ Sync device time or open settings  
+- 📁 **Projects:** group package regexes, credentials, paste strings and deeplinks per project
+  - 🎮 Control apps: launch, force stop, home, clear data, uninstall, per-app language (Android 13+)  
+  - 🔐 Type saved credentials (username, tab, password, enter) and 📝 paste strings  
+  - 🔗 Open deeplinks  
+- 🛠️ **Device Tools:**  
+  - 📷 Capture: screenshots (also copied to the clipboard), screen recordings, demo mode  
+  - 🎨 Display & Accessibility: dark mode, font size, display size, screen reader  
+  - 🐞 Debug: layout bounds, show taps, pointer location, animations on/off, proxy  
+  - 🔩 System: language settings, time sync, media session, device info, Fire TV dev tools  
+  - 📦 All third party packages  
+- ⚙️ **Settings:**  
+  - 📱 Devices: select device, ⚡ quick connect saved devices, connect/pair/disconnect wireless devices, switch USB device to Wi-Fi  
+  - 📝 Edit config  
+- 📱 Multiple devices: device selector on the main screen, saved device names used as labels  
 
 ---
 
@@ -66,7 +69,7 @@ When you run `adbutil` for the first time, it creates a configuration file at:
 ~/.adbutil
 ```
 
-You can customize the following options in that file:
+It starts with a `Maintenance` project containing deeplinks useful on any phone (Developer Options, Wi-Fi and Date & Time settings). You can customize the following options in that file:
 
 ```bash
 ### ADB Utility Configuration
@@ -78,6 +81,13 @@ ADBUTIL_CONFIG_VERSION=2
 ADBUTIL_SKIP_ASK_INSTALL=false
 ADBUTIL_SKIP_ASK_UPDATE=false
 ADBUTIL_USE_GUM=true
+ADBUTIL_PROXY_PORT=8888 # Port of the proxy running on this computer (Charles default: 8888)
+ADBUTIL_CAPTURE_FOLDER="$HOME/Desktop" # Where screenshots and screen recordings are saved
+# Languages offered in App Language (Android 13+)
+ADBUTIL_APP_LOCALES=(
+    "en-US"
+    "de-DE"
+)
 
 ## Private values
 

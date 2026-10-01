@@ -16,7 +16,15 @@ DOWNLOAD_URL="https://raw.githubusercontent.com/marosige/adbutil/refs/heads/main
 DOWNLOAD_FOLDER="$HOME/bin"
 DOWNLOAD_LOCATION="$DOWNLOAD_FOLDER/adbutil"
 LOCAL_VERSION="2.0.0"
-REMOTE_VERSION=$(curl -s -L --max-time 3 "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | cut -d '"' -f 2)
+REMOTE_VERSION_CACHE="${TMPDIR:-/tmp}/adbutil-remote-version"
+
+# Checked in the background at most once a day, so startup doesn't wait for the network
+if [ -z "$(find "$REMOTE_VERSION_CACHE" -mtime -1 2>/dev/null)" ]; then
+    (
+        version=$(curl -fsSL --max-time 10 "$DOWNLOAD_URL" | grep -Eo 'LOCAL_VERSION="[0-9.]+"' | head -n1 | cut -d '"' -f 2)
+        [ -n "$version" ] && echo "$version" > "$REMOTE_VERSION_CACHE"
+    ) > /dev/null 2>&1 &
+fi
 
 # Returns 0 if version $1 is newer than version $2
 isNewerVersion() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n1)" == "$1" ]; }
@@ -50,15 +58,17 @@ logIndent() { echo -e "${LOG_INDENT} $1"; }
 waitForEnter() {
     local DESTINATION="${1:+ to $1}"  # Adds " to <destination>" only if $1 is given
     echo -e "${YELLOW}Press enter to continue${DESTINATION:-...}${NC}"
-    read -r
+    # Keyboard input comes from the terminal, stdin is the script itself when run with "curl | bash"
+    read -r < /dev/tty
 }
 
 ## Configuration
 ADBUTIL_CONFIG="$HOME/.adbutil"
 ADBUTIL_CONFIG_SUPPORTED_VERSION=2
 if [ -f "$ADBUTIL_CONFIG" ]; then
-    # A config that fails to load would be rewritten with empty values, so stop instead.
+    # Stop on a broken config instead of running with missing values.
     # bash 3.2 "bash -n" exits 0 on some syntax errors, so its output is checked too.
+    # shellcheck source=/dev/null
     if [ -n "$(bash -n "$ADBUTIL_CONFIG" 2>&1)" ] || ! source "$ADBUTIL_CONFIG"; then
         logFail "Your config file has a syntax error: $ADBUTIL_CONFIG"
         logIndent "Fix it by hand, it was not modified."
@@ -72,6 +82,9 @@ fi
 ADBUTIL_SKIP_ASK_INSTALL=${ADBUTIL_SKIP_ASK_INSTALL:=false}
 ADBUTIL_SKIP_ASK_UPDATE=${ADBUTIL_SKIP_ASK_UPDATE:=false}
 ADBUTIL_USE_GUM=${ADBUTIL_USE_GUM:=true}
+ADBUTIL_PROXY_PORT=${ADBUTIL_PROXY_PORT:=8888}
+ADBUTIL_CAPTURE_FOLDER=${ADBUTIL_CAPTURE_FOLDER:="$HOME/Desktop"}
+[ ${#ADBUTIL_APP_LOCALES[@]} -eq 0 ] && ADBUTIL_APP_LOCALES=("en-US" "de-DE")
 
 writeConfigArray() {
     local name="$1" value
@@ -100,6 +113,12 @@ ADBUTIL_CONFIG_VERSION=$ADBUTIL_CONFIG_SUPPORTED_VERSION
 ADBUTIL_SKIP_ASK_INSTALL=$ADBUTIL_SKIP_ASK_INSTALL
 ADBUTIL_SKIP_ASK_UPDATE=$ADBUTIL_SKIP_ASK_UPDATE
 ADBUTIL_USE_GUM=$ADBUTIL_USE_GUM
+ADBUTIL_PROXY_PORT=$ADBUTIL_PROXY_PORT # Port of the proxy running on this computer (Charles default: 8888)
+ADBUTIL_CAPTURE_FOLDER="$ADBUTIL_CAPTURE_FOLDER" # Where screenshots and screen recordings are saved
+# Languages offered in App Language (Android 13+)
+EOF
+writeConfigArray ADBUTIL_APP_LOCALES "${ADBUTIL_APP_LOCALES[@]}"
+cat <<EOF
 
 ## Private values
 
@@ -136,7 +155,30 @@ cat <<EOF
 #           "Example|Google|https://www.google.com"
 EOF
 writeConfigArray ADBUTIL_DEEPLINKS "${ADBUTIL_DEEPLINKS[@]}"
+cat <<EOF
+
+$SAVED_DEVICES_HEADER
+EOF
+writeConfigArray ADBUTIL_SAVED_DEVICES "${ADBUTIL_SAVED_DEVICES[@]}"
 } > "$1"
+}
+
+SAVED_DEVICES_HEADER='# Saved devices for Quick Connect, managed by adbutil (Settings > Devices)
+# Format: "Name|Address"'
+
+# Replaces only the saved devices in the config, the rest of the file is kept as it is
+writeSavedDevices() {
+    BLOCK="$(writeConfigArray ADBUTIL_SAVED_DEVICES "${ADBUTIL_SAVED_DEVICES[@]}")" HEADER="$SAVED_DEVICES_HEADER" awk '
+        /^ADBUTIL_SAVED_DEVICES=\(/ {
+            print ENVIRON["BLOCK"]
+            found = 1
+            if ($0 !~ /\)[[:space:]]*$/) skip = 1
+            next
+        }
+        skip { if (/^\)/) skip = 0; next }
+        { print }
+        END { if (!found) printf "\n%s\n%s\n", ENVIRON["HEADER"], ENVIRON["BLOCK"] }
+    ' "$ADBUTIL_CONFIG" > "$ADBUTIL_CONFIG.tmp" && mv "$ADBUTIL_CONFIG.tmp" "$ADBUTIL_CONFIG"
 }
 
 # v1 config: convert it into a separate file for the user to review, the original is never touched
@@ -174,8 +216,18 @@ if [ "$ADBUTIL_CONFIG_VERSION" -gt "$ADBUTIL_CONFIG_SUPPORTED_VERSION" ]; then
     exit 1
 fi
 
-# Write to a temp file first, so an interrupted write can't leave a half written config
-writeConfig "$ADBUTIL_CONFIG.tmp" && mv "$ADBUTIL_CONFIG.tmp" "$ADBUTIL_CONFIG"
+# The config is only created, never rewritten, so hand edits and comments are kept.
+# Written to a temp file first, so an interrupted write can't leave a half written config.
+if [ ! -f "$ADBUTIL_CONFIG" ]; then
+    # Starter project with deeplinks useful on any phone
+    ADBUTIL_PROJECTS=("Maintenance")
+    ADBUTIL_DEEPLINKS=(
+        "Maintenance|Developer Options|android.settings.APPLICATION_DEVELOPMENT_SETTINGS"
+        "Maintenance|Wi-Fi Settings|android.settings.WIFI_SETTINGS"
+        "Maintenance|Date & Time Settings|android.settings.DATE_SETTINGS"
+    )
+    writeConfig "$ADBUTIL_CONFIG.tmp" && mv "$ADBUTIL_CONFIG.tmp" "$ADBUTIL_CONFIG"
+fi
 
 ## Dependencies
 isCommandExist() { command -v "$1" &> /dev/null; }
@@ -192,11 +244,14 @@ download() {
     [ -f "$HOME/.zshrc" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.zshrc" && echo "export PATH=\"\$PATH:$DOWNLOAD_FOLDER\"" >> "$HOME/.zshrc"
     [ -f "$HOME/.config/fish/config.fish" ] && ! grep -q "$DOWNLOAD_FOLDER" "$HOME/.config/fish/config.fish" && echo "set -gx PATH \$PATH $DOWNLOAD_FOLDER" >> "$HOME/.config/fish/config.fish"
 
-    # Download and install adbutil
-    if curl -s -L -o "$DOWNLOAD_LOCATION" "$DOWNLOAD_URL"; then
-        chmod +x "$DOWNLOAD_LOCATION"
+    # Download next to the target and only replace it with a complete, valid script
+    local download="$DOWNLOAD_LOCATION.download"
+    if curl -fsSL -o "$download" "$DOWNLOAD_URL" && [ -z "$(bash -n "$download" 2>&1)" ] && grep -q '^LOCAL_VERSION=' "$download"; then
+        chmod +x "$download"
+        mv "$download" "$DOWNLOAD_LOCATION"
         logDone "adbutil $action succeed."
     else
+        rm -f "$download"
         logFail "Failed to $action adbutil."
         logIndent "You can manually download it from: $DOWNLOAD_URL"
         logIndent "Don't forget to make it executable and move it to your PATH."
@@ -224,15 +279,71 @@ menu() {
         select choice in "$@"; do
             [ -n "$choice" ] && echo "$choice" && break
             echo -e "Invalid option. Please try again." >&2
-        done
+        done < /dev/tty
     fi
+}
+
+# Usage: prompt <header> [placeholder]
+# Prints the entered text.
+prompt() {
+    local value
+    if $ADBUTIL_USE_GUM; then
+        gum input --header "$1" --placeholder "${2:-}"
+    else
+        read -r -p "$1: " value < /dev/tty
+        echo "$value"
+    fi
+}
+
+# Usage: menuList [-s <status command>] [-n] <title> [<label> <command>]...
+# Runs the command of the selected label until Back. The status command's output is shown in the title.
+# Commands are strings, split on spaces, so they can have arguments.
+# Returns when the device disconnects, unless -n (no device needed) is given.
+menuList() {
+    local status="" needsDevice=true title header last="" choice i entries labels
+    while true; do
+        case "$1" in
+            -s) status="$2"; shift 2 ;;
+            -n) needsDevice=false; shift ;;
+            *) break ;;
+        esac
+    done
+    title="$1"
+    shift
+    entries=("$@")
+    labels=()
+    for ((i = 0; i < ${#entries[@]}; i += 2)); do labels+=("${entries[$i]}"); done
+    while ! $needsDevice || isDeviceConnected; do
+        clear
+        header="$title"
+        # shellcheck disable=SC2086
+        [ -n "$status" ] && header+=" ($($status))"
+        choice=$(menu "$header" "$last" "${labels[@]}" "$MENU_BACK")
+        last="$choice"
+        if [ "$choice" == "$MENU_BACK" ] || [ -z "$choice" ]; then
+            return
+        fi
+        for ((i = 0; i < ${#entries[@]}; i += 2)); do
+            if [ "${entries[$i]}" == "$choice" ]; then
+                # shellcheck disable=SC2086
+                ${entries[$((i + 1))]}
+                break
+            fi
+        done
+    done
+}
+
+# Usage: menuToggle <title> <status command> <on command> <off command> [<label> <command>]...
+menuToggle() {
+    local title="$1" status="$2" on="$3" off="$4"
+    shift 4
+    menuList -s "$status" "$title" "$MENU_ON" "$on" "$MENU_OFF" "$off" "$@"
 }
 
 ### ADB Utility
 
 ## Constants
 MENU_INSTALL="📥 Install adbutil"
-MENU_UPDATE="📥 Update adbutil ($LOCAL_VERSION -> $REMOTE_VERSION)"
 MENU_PROJECTS="📁 Projects"
 MENU_ALL_PACKAGES="📦 All Third Party Packages"
 MENU_DEVICE_TOOLS="🛠️ Device Tools"
@@ -246,14 +357,42 @@ MENU_HOME="🏠 Home (Background)"
 MENU_CLEAR_DATA="🧹 Clear Data"
 MENU_UNINSTALL="🗑️ Uninstall"
 MENU_LAYOUT_BOUNDS="🎯 Layout Bounds"
+MENU_SHOW_TAPS="👆 Show Taps"
+MENU_POINTER_LOCATION="📍 Pointer Location"
+MENU_ANIMATIONS="🐢 Animations"
+MENU_DEBUG="🐞 Debug"
+MENU_DISPLAY="🎨 Display & Accessibility"
+MENU_CAPTURE="📷 Capture"
+MENU_SYSTEM="🔩 System"
+MENU_SETTINGS="⚙️ Settings"
+MENU_EDIT_CONFIG="📝 Edit Config"
+MENU_DARK_MODE="🌙 Dark Mode"
+MENU_FONT_SIZE="🔠 Font Size"
+MENU_DISPLAY_SIZE="🔍 Display Size"
+MENU_SCREENSHOT="🖼️ Screenshot"
+MENU_SCREEN_RECORD="🎥 Screen Record"
+MENU_LANGUAGE="🌍 Language Settings"
+MENU_APP_LANGUAGE="🌍 App Language"
+MENU_SYSTEM_DEFAULT="⚙️ System default"
 MENU_PROXY="🌐 Proxy"
 MENU_DEMO_MODE="📸 Demo Mode"
 MENU_MEDIA_SESSION="🎬 Media Session"
 MENU_SCREEN_READER="📖 Screen Reader"
+MENU_NAVIGATE="🧭 Navigate"
 MENU_FIRE_TV_DEV_TOOLS="🔧 Fire TV Dev Tools"
 MENU_SYNC_TIME="⏱️  Sync Time"
 MENU_DEVICE_INFO="ℹ️ Device Info"
+MENU_DEVICES="📱 Devices"
+MENU_QUICK_CONNECT="⚡ Quick Connect"
+MENU_WIFI_SWITCH="📶 Switch current device to Wi-Fi"
+MENU_WIFI_CONNECT="🔗 Connect New Device"
+MENU_WIFI_PAIR="🤝 Pair (Android 11+)"
+MENU_WIFI_DISCONNECT="✂️ Disconnect"
+MENU_FORGET_DEVICE="🗑️ Forget Saved Device"
+MENU_ALL_WIFI_DEVICES="All Wi-Fi devices"
 MENU_REFRESH="🔄 Refresh"
+MENU_TAB=" ⇥ Tab Key"
+MENU_ENTER=" ⏎ Enter Key"
 MENU_SELECT_DEVICE="📱 Select Device"
 MENU_EXIT="🚪 Exit"
 MENU_BACK="↩️ Back"
@@ -293,9 +432,17 @@ selectDefaultDevice() {
 }
 
 deviceLabel() {
-    local device
+    local device name
+    name=$(savedDeviceName "$1")
     for device in "${DEVICES[@]}"; do
-        [ "${device%%|*}" == "$1" ] && echo "${device#*|} ($1)" && return
+        [ "${device%%|*}" == "$1" ] && echo "${name:-${device#*|}} ($1)" && return
+    done
+}
+
+savedDeviceName() {
+    local device
+    for device in "${ADBUTIL_SAVED_DEVICES[@]}"; do
+        [ "${device#*|}" == "$1" ] && echo "${device%%|*}" && return
     done
 }
 
@@ -366,6 +513,8 @@ loadProjectItems() {
 ## Actions
 # "input text" needs spaces as %s and runs through the device shell, so quote the rest
 actionInputText() { adb shell input text "$(printf '%q' "${1// /%s}")"; }
+actionTabKey() { adb shell input keyevent 61; }   # KEYCODE_TAB
+actionEnterKey() { adb shell input keyevent 66; } # KEYCODE_ENTER
 actionOpenDeeplink() {
     if [[ "$1" =~ ^https?:// ]]; then
         adb shell am start -a android.intent.action.VIEW -d "$1"
@@ -373,21 +522,128 @@ actionOpenDeeplink() {
         adb shell am start -a "$1"
     fi
 }
+## Device Tool Actions
+# Status functions print the current state, shown in the menu title
+getSetting() { adb shell settings get "$1" "$2" | tr -d '\r'; }
+onOff() { if "$@"; then echo "On"; else echo "Off"; fi; }
+
 actionLayoutBounds() { adb shell setprop debug.layout "$1"; adb shell service call activity 1599295570 > /dev/null 2>&1; }
-actionProxyOn() { adb shell settings put global http_proxy "$(ipconfig getifaddr en0):8888"; }
-actionProxyOff() { adb shell settings put global http_proxy :0; }
-actionProxyStatus() {
-    local proxy
+statusLayoutBounds() { onOff [ "$(adb shell getprop debug.layout | tr -d '\r')" == "true" ]; }
+actionShowTaps() { adb shell settings put system show_touches "$1"; }
+statusShowTaps() { onOff [ "$(getSetting system show_touches)" == "1" ]; }
+actionPointerLocation() { adb shell settings put system pointer_location "$1"; }
+statusPointerLocation() { onOff [ "$(getSetting system pointer_location)" == "1" ]; }
+actionAnimations() {
+    local key
+    for key in window_animation_scale transition_animation_scale animator_duration_scale; do
+        adb shell settings put global "$key" "$1"
+    done
+}
+statusAnimations() { onOff [ "$(getSetting global animator_duration_scale | sed 's/\.0*$//')" != "0" ]; }
+
+actionDarkMode() { adb shell cmd uimode night "$1" > /dev/null 2>&1; }
+statusDarkMode() { onOff [ "$(adb shell cmd uimode night 2>/dev/null | grep -c 'yes')" -gt 0 ]; }
+actionFontScale() { adb shell settings put system font_scale "$1"; }
+statusFontSize() {
+    local scale
+    scale=$(getSetting system font_scale)
+    [ "$scale" == "null" ] && scale=1
+    awk -v s="$scale" 'BEGIN { printf "%d%%", s * 100 + 0.5 }'
+}
+# Usage: actionDisplaySize <factor of the physical density | reset>
+actionDisplaySize() {
+    if [ "$1" == "reset" ]; then
+        adb shell wm density reset
+        return
+    fi
+    adb shell wm density "$(adb shell wm density | tr -d '\r' | awk -v f="$1" '/Physical/ { printf "%d", $3 * f + 0.5 }')"
+}
+statusDisplaySize() {
+    adb shell wm density | tr -d '\r' | awk '/Physical/ { p = $3 } /Override/ { o = $3 } END { if (o) printf "%d%%", o * 100 / p + 0.5; else print "Default" }'
+}
+
+# Prints a new file path in the capture folder, named after the device model and time
+captureFile() {
+    mkdir -p "$ADBUTIL_CAPTURE_FOLDER"
+    echo "$ADBUTIL_CAPTURE_FOLDER/$(adb shell getprop ro.product.model | tr -d '\r ')-$(date +%Y%m%d-%H%M%S).$1"
+}
+actionScreenshot() {
+    local file
+    file=$(captureFile png)
     clear
-    proxy=$(adb shell settings get global http_proxy)
-    if [ -z "$proxy" ] || [ "$proxy" == "null" ] || [ "$proxy" == ":0" ]; then
-        logInfo "Proxy is not set"
+    if adb exec-out screencap -p > "$file" && [ -s "$file" ]; then
+        osascript -e "set the clipboard to (read (POSIX file \"$file\") as «class PNGf»)" > /dev/null 2>&1
+        logDone "Screenshot saved and copied to the clipboard:"
+        logIndent "$file"
     else
-        logInfo "Proxy set to: $proxy"
+        rm -f "$file"
+        logFail "Could not take a screenshot."
     fi
     waitForEnter
 }
-actionMediaSession() { adb shell input keyevent "$1"; }
+actionScreenRecord() {
+    local file pid remote="/sdcard/adbutil-recording.mp4"
+    file=$(captureFile mp4)
+    clear
+    adb shell screenrecord "$remote" > /dev/null 2>&1 &
+    pid=$!
+    logTask "Recording... (Android stops automatically after 3 minutes)"
+    echo -e "${YELLOW}Press enter to stop recording${NC}"
+    read -r < /dev/tty
+    # SIGINT lets screenrecord finish the file properly
+    adb shell pkill -2 screenrecord > /dev/null 2>&1
+    wait "$pid"
+    sleep 1
+    if adb pull "$remote" "$file" > /dev/null 2>&1; then
+        logDone "Recording saved:"
+        logIndent "$file"
+    else
+        logFail "Could not save the recording."
+    fi
+    adb shell rm -f "$remote" > /dev/null 2>&1
+    waitForEnter
+}
+actionOpenLanguageSettings() { adb shell am start -a android.settings.LOCALE_SETTINGS > /dev/null 2>&1; }
+# Usage: actionAppLanguage <package> [locale], without locale the app follows the system language again
+actionAppLanguage() {
+    if [ -n "$2" ]; then
+        adb shell cmd locale set-app-locales "$1" --locales "$2" > /dev/null 2>&1
+    else
+        adb shell cmd locale set-app-locales "$1" > /dev/null 2>&1
+    fi
+}
+statusAppLanguage() {
+    local locales
+    locales=$(adb shell cmd locale get-app-locales "$1" 2>/dev/null | tr -d '\r' | sed -n 's/.*\[\(.*\)\].*/\1/p')
+    echo "${locales:-System default}"
+}
+
+actionProxyOn() {
+    local interface ip=""
+    # Wi-Fi/Ethernet first, the default route can be a VPN the device can't reach
+    for interface in en0 en1 "$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')"; do
+        ip=$(ipconfig getifaddr "$interface" 2>/dev/null) && [ -n "$ip" ] && break
+    done
+    if [ -z "$ip" ]; then
+        clear
+        logFail "Could not find this computer's IP address, is it connected to a network?"
+        waitForEnter
+        return
+    fi
+    adb shell settings put global http_proxy "$ip:$ADBUTIL_PROXY_PORT"
+}
+actionProxyOff() { adb shell settings put global http_proxy :0; }
+statusProxy() {
+    local proxy
+    proxy=$(getSetting global http_proxy)
+    if [ -z "$proxy" ] || [ "$proxy" == "null" ] || [ "$proxy" == ":0" ]; then
+        echo "Off"
+    else
+        echo "$proxy"
+    fi
+}
+actionMediaSession() { adb shell cmd media_session dispatch "$1" > /dev/null 2>&1; }
+actionMediaSessionInfo() { adb shell dumpsys media_session | less; }
 # Only changes what the status bar shows, the real device time is untouched
 actionDemoMode() {
     local demo=(adb shell am broadcast -a com.android.systemui.demo -e command)
@@ -411,21 +667,31 @@ actionDemoMode() {
         adb shell settings put global sysui_demo_allowed 0 > /dev/null 2>&1
     fi
 }
-actionScreenReaderOn() { adb shell settings put secure enabled_accessibility_services com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService > /dev/null 2>&1; adb shell settings put secure accessibility_enabled 1 > /dev/null 2>&1; }
-actionScreenReaderOff() { adb shell settings put secure enabled_accessibility_services null > /dev/null 2>&1; adb shell settings put secure accessibility_enabled 0 > /dev/null 2>&1; }
-actionScreenReaderStatus() {
-    local enabled services
-    clear
-    enabled=$(adb shell settings get secure accessibility_enabled)
-    services=$(adb shell settings get secure enabled_accessibility_services)
-    if [ "$enabled" = "1" ] && [ -n "$services" ] && [ "$services" != "null" ]; then
-        logInfo "Screen Reader is enabled"
-        logIndent "Services: $services"
-    else
-        logInfo "Screen Reader is disabled"
+statusDemoMode() { onOff [ "$(adb shell dumpsys activity service com.android.systemui 2>/dev/null | grep -c 'isInDemoMode=true')" -gt 0 ]; }
+TALKBACK_SERVICE="com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
+# Prints the enabled accessibility services, ":" separated
+accessibilityServices() { adb shell settings get secure enabled_accessibility_services | tr -d '\r' | sed 's/^null$//'; }
+actionScreenReaderOn() {
+    local services
+    services=$(accessibilityServices)
+    if [[ ":$services:" != *":$TALKBACK_SERVICE:"* ]]; then
+        services="${services:+$services:}$TALKBACK_SERVICE"
     fi
-    waitForEnter
+    adb shell settings put secure enabled_accessibility_services "$services" > /dev/null 2>&1
+    adb shell settings put secure accessibility_enabled 1 > /dev/null 2>&1
 }
+# Only removes TalkBack, other accessibility services stay enabled
+actionScreenReaderOff() {
+    local services
+    services=$(accessibilityServices | tr ':' '\n' | grep -vxF "$TALKBACK_SERVICE" | paste -sd: -)
+    if [ -n "$services" ]; then
+        adb shell settings put secure enabled_accessibility_services "$services" > /dev/null 2>&1
+    else
+        adb shell settings delete secure enabled_accessibility_services > /dev/null 2>&1
+        adb shell settings put secure accessibility_enabled 0 > /dev/null 2>&1
+    fi
+}
+statusScreenReader() { onOff [ "$(accessibilityServices | tr ':' '\n' | grep -cxF "$TALKBACK_SERVICE")" -gt 0 ]; }
 actionScreenReaderNavigate() {
     clear
     logInfo "Screen Reader Navigation Mode"
@@ -443,10 +709,10 @@ actionScreenReaderNavigate() {
     adb shell input keyevent 61 > /dev/null 2>&1
 
     while true; do
-        read -rsn1 key
+        read -rsn1 key < /dev/tty
         case "$key" in
             $'\x1b')  # ESC sequence for arrow keys
-                read -rsn2 key
+                read -rsn2 key < /dev/tty
                 case "$key" in
                     '[A') adb shell input keyevent 19 ;;  # DPAD_UP
                     '[B') adb shell input keyevent 20 ;;  # DPAD_DOWN
@@ -467,6 +733,92 @@ actionOpenFireTVDevTools() { adb shell am start com.amazon.ssm/com.amazon.ssm.Co
 actionSetSystemDate() { adb shell "date $(date +%m%d%H%M%G.%S) ; am broadcast -a android.intent.action.TIME_SET";}
 actionOpenDateSettings() { adb shell am start -a android.settings.DATE_SETTINGS; }
 actionRestartDevice() { adb reboot; }
+
+## Wireless Debugging Actions
+actionWifiSwitch() {
+    local ip interface output
+    clear
+    ip=$(adb shell ip -f inet addr show wlan0 2>/dev/null | tr -d '\r' | awk '/inet / { sub(/\/.*/, "", $2); print $2; exit }')
+    if [ -z "$ip" ]; then
+        logFail "The device is not connected to Wi-Fi."
+        waitForEnter
+        return
+    fi
+    # A route through a VPN tunnel means the phone is not on this computer's network
+    interface=$(route -n get "$ip" 2>/dev/null | awk '/interface:/ { print $2 }')
+    if [[ "$interface" == utun* ]]; then
+        logFail "The device ($ip) is only reachable through this computer's VPN ($interface)."
+        logIndent "Wireless debugging needs the device and this computer on the same network without a VPN in between."
+        waitForEnter
+        return
+    fi
+    logTask "Switching $ip to wireless debugging..."
+    adb tcpip 5555 > /dev/null
+    sleep 2
+    output=$(adb connect "$ip:5555")
+    # adb connect exits 0 even when it fails
+    if [[ "$output" == *"connected to"* ]]; then
+        export ANDROID_SERIAL="$ip:5555"
+        logDone "Connected to $ip:5555, you can unplug the cable."
+        offerSaveDevice "$ip:5555"
+    else
+        logFail "$output"
+        # Don't leave the device listening on the network
+        adb usb > /dev/null 2>&1
+        logIndent "The device was switched back to USB. Are the device and this computer on the same network?"
+    fi
+    waitForEnter
+}
+actionWifiConnect() {
+    local address output
+    clear
+    address=$(prompt "Device address (IP:port from Developer options > Wireless debugging)" "192.168.1.23:5555")
+    [ -z "$address" ] && return
+    output=$(adb connect "$address")
+    if [[ "$output" == *"connected to"* ]]; then
+        export ANDROID_SERIAL="$address"
+        logDone "$output"
+        offerSaveDevice "$address"
+    else
+        logFail "$output"
+    fi
+    waitForEnter
+}
+# Connects a saved device, only stops to show an error
+actionQuickConnect() {
+    local output
+    output=$(adb connect "$1")
+    if [[ "$output" == *"connected to"* ]]; then
+        export ANDROID_SERIAL="$1"
+        return
+    fi
+    clear
+    logFail "$output"
+    logIndent "Is wireless debugging still on and does the device still have this address?"
+    waitForEnter
+}
+# Asks for a name to remember a newly connected device for Quick Connect
+offerSaveDevice() {
+    local name
+    [ -n "$(savedDeviceName "$1")" ] && return
+    echo
+    name=$(prompt "Save for Quick Connect? Enter a name, or leave empty to skip" "$(adb -s "$1" shell getprop ro.product.model | tr -d '\r')")
+    name="${name//|/}"
+    [ -z "$name" ] && return
+    ADBUTIL_SAVED_DEVICES+=("$name|$1")
+    writeSavedDevices && logDone "Saved \"$name\" for Quick Connect."
+}
+actionWifiPair() {
+    local address code
+    clear
+    address=$(prompt "Pairing address (Wireless debugging > Pair device with pairing code)" "192.168.1.23:37123")
+    [ -z "$address" ] && return
+    code=$(prompt "Pairing code" "123456")
+    [ -z "$code" ] && return
+    adb pair "$address" "$code"
+    logInfo "After pairing, use Connect New Device with the IP address & port shown on the Wireless debugging screen."
+    waitForEnter
+}
 
 ## Project Menus
 # Every menu loops until Back, keeping the last selected option highlighted.
@@ -551,22 +903,36 @@ menuApp() {
 
 # Returns 1 if the app got uninstalled
 menuControl() {
-    local package="$1" title="$2" last="" choice
+    local package="$1" title="$2" last="" choice items
+    items=("$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_HOME" "$MENU_CLEAR_DATA" "$MENU_UNINSTALL")
+    # Per-app languages exist since Android 13 (API 33)
+    [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -ge 33 ] 2>/dev/null && items+=("$MENU_APP_LANGUAGE")
+    items+=("$MENU_INFO" "$MENU_BACK")
     while isDeviceConnected; do
         clear
-        choice=$(menu "$title" "$last" "$MENU_LAUNCH" "$MENU_FORCE_STOP" "$MENU_HOME" "$MENU_CLEAR_DATA" "$MENU_UNINSTALL" "$MENU_INFO" "$MENU_BACK")
+        choice=$(menu "$title" "$last" "${items[@]}")
         last="$choice"
         case "$choice" in
             "$MENU_LAUNCH") adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 ;;
             "$MENU_FORCE_STOP") adb shell am force-stop "$package" ;;
             "$MENU_HOME") adb shell input keyevent 3 ;;
             "$MENU_CLEAR_DATA") adb shell pm clear "$package" ;;
+            "$MENU_APP_LANGUAGE") menuAppLanguage "$package" ;;
             "$MENU_UNINSTALL") adb uninstall "$package"; return 1 ;;
             "$MENU_INFO") adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$package" > /dev/null 2>&1 ;;
             "$MENU_BACK"|"") return 0 ;;
         esac
     done
     return 0
+}
+
+menuAppLanguage() {
+    local package="$1" locale entries
+    entries=("$MENU_SYSTEM_DEFAULT" "actionAppLanguage $package")
+    for locale in "${ADBUTIL_APP_LOCALES[@]}"; do
+        entries+=("$locale" "actionAppLanguage $package $locale")
+    done
+    menuList -s "statusAppLanguage $package" "$MENU_APP_LANGUAGE - $package" "${entries[@]}"
 }
 
 menuCredentials() {
@@ -594,9 +960,7 @@ menuCredentials() {
 menuCredential() {
     local title user pass last="" choice
     local MENU_USERNAME="👤 Username"
-    local MENU_TAB=" ⇥ Tab Key"
     local MENU_PASSWORD="🔑 Password"
-    local MENU_ENTER=" ⏎ Enter Key"
     IFS='|' read -r title user pass <<< "$1"
     while true; do
         clear
@@ -604,9 +968,9 @@ menuCredential() {
         last="$choice"
         case "$choice" in
             "$MENU_USERNAME: $user") actionInputText "$user" ;;
-            "$MENU_TAB") adb shell input keyevent 61 ;;   # 61 is KEYCODE_TAB
+            "$MENU_TAB") actionTabKey ;;
             "$MENU_PASSWORD: $pass") actionInputText "$pass" ;;
-            "$MENU_ENTER") adb shell input keyevent 66 ;; # 66 is KEYCODE_ENTER
+            "$MENU_ENTER") actionEnterKey ;;
             "$MENU_BACK"|"") return ;;
         esac
     done
@@ -622,9 +986,11 @@ menuPasteStrings() {
     title="$MENU_PASTE_STRINGS - ${project//|/ + }"
     while true; do
         clear
-        choice=$(menu "$title" "$last" "${labels[@]}" "$MENU_BACK")
+        choice=$(menu "$title" "$last" "${labels[@]}" "$MENU_TAB" "$MENU_ENTER" "$MENU_BACK")
         last="$choice"
         case "$choice" in
+            "$MENU_TAB") actionTabKey; continue ;;
+            "$MENU_ENTER") actionEnterKey; continue ;;
             "$MENU_BACK"|"") return ;;
         esac
         for i in "${!labels[@]}"; do
@@ -664,7 +1030,7 @@ menuAllPackages() {
     local last="" choice packages
     while isDeviceConnected; do
         clear
-        packages=($(installedPackages))
+        IFS=$'\n' read -r -d '' -a packages < <(installedPackages)
         choice=$(menu "$MENU_ALL_PACKAGES" "$last" "${packages[@]}" "$MENU_REFRESH" "$MENU_BACK")
         last="$choice"
         case "$choice" in
@@ -684,137 +1050,180 @@ menuAllPackages() {
 
 ## Device Tool Menus
 menuDeviceTools() {
-    local last="" choice
-    while isDeviceConnected; do
-        clear
-        choice=$(menu "$MENU_DEVICE_TOOLS" "$last" \
-            "$MENU_LAYOUT_BOUNDS" \
-            "$MENU_SCREEN_READER" \
-            "$MENU_PROXY" \
-            "$MENU_DEMO_MODE" \
-            "$MENU_MEDIA_SESSION" \
-            "$MENU_FIRE_TV_DEV_TOOLS" \
-            "$MENU_SYNC_TIME" \
-            "$MENU_DEVICE_INFO" \
-            "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_LAYOUT_BOUNDS") menuLayoutBounds ;;
-            "$MENU_SCREEN_READER") menuScreenReader ;;
-            "$MENU_PROXY") menuProxy ;;
-            "$MENU_DEMO_MODE") menuDemoMode ;;
-            "$MENU_MEDIA_SESSION") menuMediaSession ;;
-            "$MENU_FIRE_TV_DEV_TOOLS") menuFireTVDevTools ;;
-            "$MENU_SYNC_TIME") menuSyncTime ;;
-            "$MENU_DEVICE_INFO") menuDeviceInfo ;;
-            "$MENU_BACK"|"") return ;;
-        esac
-    done
+    menuList "$MENU_DEVICE_TOOLS" \
+        "$MENU_CAPTURE" menuCapture \
+        "$MENU_DISPLAY" menuDisplay \
+        "$MENU_DEBUG" menuDebug \
+        "$MENU_SYSTEM" menuSystem \
+        "$MENU_ALL_PACKAGES" menuAllPackages
 }
-menuLayoutBounds() {
-    local last="" choice
-    while true; do
-        clear
-        choice=$(menu "$MENU_LAYOUT_BOUNDS" "$last" "$MENU_ON" "$MENU_OFF" "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_ON") actionLayoutBounds "true" ;;
-            "$MENU_OFF") actionLayoutBounds "false" ;;
-            "$MENU_BACK"|"") return ;;
-        esac
-    done
+menuCapture() {
+    menuList "$MENU_CAPTURE" \
+        "$MENU_SCREENSHOT" actionScreenshot \
+        "$MENU_SCREEN_RECORD" actionScreenRecord \
+        "$MENU_SHOW_TAPS" menuShowTaps \
+        "$MENU_DEMO_MODE" menuDemoMode
 }
-menuProxy() {
-    local last="" choice
-    while true; do
-        clear
-        choice=$(menu "$MENU_PROXY" "$last" "$MENU_ON" "$MENU_OFF" "$MENU_INFO" "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_ON") actionProxyOn ;;
-            "$MENU_OFF") actionProxyOff ;;
-            "$MENU_INFO") actionProxyStatus ;;
-            "$MENU_BACK"|"") return ;;
-        esac
-    done
+menuDisplay() {
+    menuList "$MENU_DISPLAY" \
+        "$MENU_DARK_MODE" menuDarkMode \
+        "$MENU_FONT_SIZE" menuFontSize \
+        "$MENU_DISPLAY_SIZE" menuDisplaySize \
+        "$MENU_SCREEN_READER" menuScreenReader
 }
-menuDemoMode() {
-    local last="" choice
-    while true; do
-        clear
-        choice=$(menu "$MENU_DEMO_MODE" "$last" "$MENU_ON" "$MENU_OFF" "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_ON") actionDemoMode true ;;
-            "$MENU_OFF") actionDemoMode false ;;
-            "$MENU_BACK"|"") return ;;
-        esac
-    done
+menuSystem() {
+    local entries=(
+        "$MENU_LANGUAGE" actionOpenLanguageSettings
+        "$MENU_SYNC_TIME" menuSyncTime
+        "$MENU_MEDIA_SESSION" menuMediaSession
+        "$MENU_DEVICE_INFO" menuDeviceInfo
+    )
+    if [ "$(adb shell getprop ro.product.manufacturer | tr -d '\r')" == "Amazon" ]; then
+        entries+=("$MENU_FIRE_TV_DEV_TOOLS" actionOpenFireTVDevTools)
+    fi
+    menuList "$MENU_SYSTEM" "${entries[@]}"
 }
+menuDarkMode() { menuToggle "$MENU_DARK_MODE" statusDarkMode "actionDarkMode yes" "actionDarkMode no"; }
+menuFontSize() {
+    menuList -s statusFontSize "$MENU_FONT_SIZE" \
+        "Small (85%)" "actionFontScale 0.85" \
+        "Default (100%)" "actionFontScale 1.0" \
+        "Large (115%)" "actionFontScale 1.15" \
+        "Larger (130%)" "actionFontScale 1.3" \
+        "Largest (150%)" "actionFontScale 1.5" \
+        "Huge (200%, Android 14+)" "actionFontScale 2.0"
+}
+menuDisplaySize() {
+    menuList -s statusDisplaySize "$MENU_DISPLAY_SIZE" \
+        "Small (85%)" "actionDisplaySize 0.85" \
+        "Default" "actionDisplaySize reset" \
+        "Large (115%)" "actionDisplaySize 1.15" \
+        "Larger (130%)" "actionDisplaySize 1.3"
+}
+menuDebug() {
+    menuList "$MENU_DEBUG" \
+        "$MENU_LAYOUT_BOUNDS" menuLayoutBounds \
+        "$MENU_SHOW_TAPS" menuShowTaps \
+        "$MENU_POINTER_LOCATION" menuPointerLocation \
+        "$MENU_ANIMATIONS" menuAnimations \
+        "$MENU_PROXY" menuProxy
+}
+menuLayoutBounds() { menuToggle "$MENU_LAYOUT_BOUNDS" statusLayoutBounds "actionLayoutBounds true" "actionLayoutBounds false"; }
+menuShowTaps() { menuToggle "$MENU_SHOW_TAPS" statusShowTaps "actionShowTaps 1" "actionShowTaps 0"; }
+menuPointerLocation() { menuToggle "$MENU_POINTER_LOCATION" statusPointerLocation "actionPointerLocation 1" "actionPointerLocation 0"; }
+menuAnimations() { menuToggle "$MENU_ANIMATIONS" statusAnimations "actionAnimations 1" "actionAnimations 0"; }
+menuProxy() { menuToggle "$MENU_PROXY" statusProxy actionProxyOn actionProxyOff; }
+menuDemoMode() { menuToggle "$MENU_DEMO_MODE" statusDemoMode "actionDemoMode true" "actionDemoMode false"; }
+menuScreenReader() { menuToggle "$MENU_SCREEN_READER" statusScreenReader actionScreenReaderOn actionScreenReaderOff "$MENU_NAVIGATE" actionScreenReaderNavigate; }
 menuMediaSession() {
-    local last="" choice
-    local MENU_MEDIA_PLAY_PAUSE="⏯️ play-pause"
-    local MENU_MEDIA_PLAY="▶️ play"
-    local MENU_MEDIA_PAUSE="⏸️ pause"
-    local MENU_MEDIA_FF="⏩ fast-forward"
-    local MENU_MEDIA_RW="⏪ rewind"
-    while true; do
-        clear
-        choice=$(menu "$MENU_MEDIA_SESSION" "$last" "$MENU_MEDIA_PLAY_PAUSE" "$MENU_MEDIA_PLAY" "$MENU_MEDIA_PAUSE" "$MENU_MEDIA_FF" "$MENU_MEDIA_RW" "$MENU_INFO" "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_BACK"|"") return ;;
-            "$MENU_INFO") adb shell dumpsys media_session ;;
-            *)
-                # Remove emoji and whitespace before passing to actionMediaSession
-                actionMediaSession "$(echo "$choice" | sed -E 's/^[^ ]+ //')"
-            ;;
-        esac
-    done
-}
-menuScreenReader() {
-    local last="" choice
-    local MENU_NAVIGATE="🧭 Navigate"
-    while true; do
-        clear
-        choice=$(menu "$MENU_SCREEN_READER" "$last" "$MENU_ON" "$MENU_OFF" "$MENU_NAVIGATE" "$MENU_INFO" "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_ON") actionScreenReaderOn ;;
-            "$MENU_OFF") actionScreenReaderOff ;;
-            "$MENU_NAVIGATE") actionScreenReaderNavigate ;;
-            "$MENU_INFO") actionScreenReaderStatus ;;
-            "$MENU_BACK"|"") return ;;
-        esac
-    done
-}
-menuFireTVDevTools() {
-    local last="" choice
-    while true; do
-        clear
-        choice=$(menu "$MENU_FIRE_TV_DEV_TOOLS" "$last" "$MENU_OPEN_SETTINGS" "$MENU_BACK")
-        last="$choice"
-        case "$choice" in
-            "$MENU_OPEN_SETTINGS") actionOpenFireTVDevTools ;;
-            "$MENU_BACK"|"") return ;;
-        esac
-    done
+    menuList "$MENU_MEDIA_SESSION" \
+        "⏯️ Play/Pause" "actionMediaSession play-pause" \
+        "▶️ Play" "actionMediaSession play" \
+        "⏸️ Pause" "actionMediaSession pause" \
+        "⏩ Fast Forward" "actionMediaSession fast-forward" \
+        "⏪ Rewind" "actionMediaSession rewind" \
+        "$MENU_INFO" actionMediaSessionInfo
 }
 menuSyncTime() {
-    local last="" choice
-    local MENU_SYNC_TIME_AUTO="🕒 Sync time automatically (needs root)"
-    local MENU_SYNC_TIME_RESTART="🔄 Restart device"
+    menuList "$MENU_SYNC_TIME" \
+        "🕒 Sync time automatically (needs root)" actionSetSystemDate \
+        "$MENU_OPEN_SETTINGS" actionOpenDateSettings \
+        "🔄 Restart device" actionRestartDevice
+}
+# Device manager: select, connect, disconnect and remember devices
+menuDevices() {
+    local last="" choice title items device wifiCount
     while true; do
         clear
-        choice=$(menu "$MENU_SYNC_TIME" "$last" "$MENU_SYNC_TIME_AUTO" "$MENU_OPEN_SETTINGS" "$MENU_SYNC_TIME_RESTART" "$MENU_BACK")
+        selectDefaultDevice
+        wifiCount=0
+        for device in "${DEVICES[@]}"; do [[ "${device%%|*}" == *:* ]] && wifiCount=$((wifiCount + 1)); done
+        items=()
+        [ ${#DEVICES[@]} -gt 1 ] && items+=("$MENU_SELECT_DEVICE")
+        [ ${#ADBUTIL_SAVED_DEVICES[@]} -gt 0 ] && items+=("$MENU_QUICK_CONNECT")
+        items+=("$MENU_WIFI_CONNECT" "$MENU_WIFI_PAIR")
+        # Switching only makes sense for a USB device, Wi-Fi serials are IP:port
+        [ -n "$ANDROID_SERIAL" ] && [[ "$ANDROID_SERIAL" != *:* ]] && items+=("$MENU_WIFI_SWITCH")
+        [ "$wifiCount" -gt 0 ] && items+=("$MENU_WIFI_DISCONNECT")
+        [ ${#ADBUTIL_SAVED_DEVICES[@]} -gt 0 ] && items+=("$MENU_FORGET_DEVICE")
+        if [ -n "$ANDROID_SERIAL" ]; then
+            title="$MENU_DEVICES - $(deviceLabel "$ANDROID_SERIAL")"
+        else
+            title="$MENU_DEVICES - ${#DEVICES[@]} connected, none selected"
+        fi
+        choice=$(menu "$title" "$last" "${items[@]}" "$MENU_BACK")
         last="$choice"
         case "$choice" in
-            "$MENU_SYNC_TIME_AUTO") actionSetSystemDate ;;
-            "$MENU_OPEN_SETTINGS") actionOpenDateSettings ;;
-            "$MENU_SYNC_TIME_RESTART") actionRestartDevice ;;
+            "$MENU_SELECT_DEVICE") menuSelectDevice ;;
+            "$MENU_QUICK_CONNECT") menuQuickConnect ;;
+            "$MENU_WIFI_CONNECT") actionWifiConnect ;;
+            "$MENU_WIFI_PAIR") actionWifiPair ;;
+            "$MENU_WIFI_SWITCH") actionWifiSwitch ;;
+            "$MENU_WIFI_DISCONNECT") menuDisconnect ;;
+            "$MENU_FORGET_DEVICE") menuForgetDevice ;;
             "$MENU_BACK"|"") return ;;
         esac
     done
+}
+# Sets SAVED_DEVICE_LABELS to "Name (address)" of the saved devices, in the same order
+loadSavedDeviceLabels() {
+    local device
+    SAVED_DEVICE_LABELS=()
+    for device in "${ADBUTIL_SAVED_DEVICES[@]}"; do SAVED_DEVICE_LABELS+=("${device%%|*} (${device#*|})"); done
+}
+menuQuickConnect() {
+    local choice i
+    loadSavedDeviceLabels
+    clear
+    choice=$(menu "$MENU_QUICK_CONNECT" "" "${SAVED_DEVICE_LABELS[@]}" "$MENU_BACK")
+    for i in "${!SAVED_DEVICE_LABELS[@]}"; do
+        [ "${SAVED_DEVICE_LABELS[$i]}" == "$choice" ] && actionQuickConnect "${ADBUTIL_SAVED_DEVICES[$i]#*|}"
+    done
+}
+menuDisconnect() {
+    local choice device labels=()
+    for device in "${DEVICES[@]}"; do
+        [[ "${device%%|*}" == *:* ]] && labels+=("$(deviceLabel "${device%%|*}")")
+    done
+    clear
+    choice=$(menu "$MENU_WIFI_DISCONNECT" "" "${labels[@]}" "$MENU_ALL_WIFI_DEVICES" "$MENU_BACK")
+    if [ "$choice" == "$MENU_ALL_WIFI_DEVICES" ]; then
+        adb disconnect > /dev/null 2>&1
+        return
+    fi
+    for device in "${DEVICES[@]}"; do
+        [ "$(deviceLabel "${device%%|*}")" == "$choice" ] && adb disconnect "${device%%|*}" > /dev/null 2>&1
+    done
+}
+menuForgetDevice() {
+    local choice i kept=()
+    loadSavedDeviceLabels
+    clear
+    choice=$(menu "$MENU_FORGET_DEVICE" "" "${SAVED_DEVICE_LABELS[@]}" "$MENU_BACK")
+    for i in "${!SAVED_DEVICE_LABELS[@]}"; do
+        [ "${SAVED_DEVICE_LABELS[$i]}" != "$choice" ] && kept+=("${ADBUTIL_SAVED_DEVICES[$i]}")
+    done
+    if [ ${#kept[@]} -ne ${#ADBUTIL_SAVED_DEVICES[@]} ]; then
+        ADBUTIL_SAVED_DEVICES=("${kept[@]}")
+        writeSavedDevices
+    fi
+}
+menuSettings() {
+    menuList -n "$MENU_SETTINGS" \
+        "$MENU_DEVICES" menuDevices \
+        "$MENU_EDIT_CONFIG" actionEditConfig
+}
+# Opens the config in the terminal editor and reloads it when the editor closes
+actionEditConfig() {
+    # shellcheck disable=SC2086 # EDITOR may contain arguments, e.g. "code --wait"
+    ${VISUAL:-${EDITOR:-nano}} "$ADBUTIL_CONFIG" < /dev/tty
+    # shellcheck source=/dev/null
+    if [ -n "$(bash -n "$ADBUTIL_CONFIG" 2>&1)" ] || ! source "$ADBUTIL_CONFIG"; then
+        clear
+        logFail "Your config file has a syntax error: $ADBUTIL_CONFIG"
+        logIndent "Fix it with Edit Config, otherwise adbutil won't start next time."
+        waitForEnter
+    fi
 }
 menuDeviceInfo() {
     local i value keys labels
@@ -875,6 +1284,8 @@ menuMain() {
         clear
         selectDefaultDevice
         menuItems=()
+        REMOTE_VERSION=$(cat "$REMOTE_VERSION_CACHE" 2>/dev/null)
+        MENU_UPDATE="📥 Update adbutil ($LOCAL_VERSION -> $REMOTE_VERSION)"
         if ! $ADBUTIL_SKIP_ASK_INSTALL && ! isCommandExist adbutil; then
             menuItems+=("$MENU_INSTALL")
         elif ! $ADBUTIL_SKIP_ASK_UPDATE && [ -n "$REMOTE_VERSION" ] && isNewerVersion "$REMOTE_VERSION" "$LOCAL_VERSION"; then
@@ -882,7 +1293,7 @@ menuMain() {
         fi
         if [ -n "$ANDROID_SERIAL" ]; then
             title="📱 $(deviceLabel "$ANDROID_SERIAL")"
-            menuItems+=("$MENU_PROJECTS" "$MENU_ALL_PACKAGES" "$MENU_DEVICE_TOOLS")
+            menuItems+=("$MENU_PROJECTS" "$MENU_DEVICE_TOOLS")
         elif [ ${#DEVICES[@]} -gt 1 ]; then
             title="📱 ${#DEVICES[@]} devices connected, select one"
         elif [ "$DEVICES_UNAUTHORIZED" -gt 0 ]; then
@@ -893,16 +1304,18 @@ menuMain() {
             menuItems+=("$MENU_REFRESH")
         fi
         [ ${#DEVICES[@]} -gt 1 ] && menuItems+=("$MENU_SELECT_DEVICE")
-        menuItems+=("$MENU_EXIT")
+        [ -z "$ANDROID_SERIAL" ] && [ ${#ADBUTIL_SAVED_DEVICES[@]} -gt 0 ] && menuItems+=("$MENU_QUICK_CONNECT")
+        menuItems+=("$MENU_SETTINGS" "$MENU_EXIT")
         choice=$(menu "$title" "$last" "${menuItems[@]}")
         last="$choice"
         case "$choice" in
             "$MENU_INSTALL") download "install" ;;
             "$MENU_UPDATE") download "update" ;;
             "$MENU_PROJECTS") menuProjects ;;
-            "$MENU_ALL_PACKAGES") menuAllPackages ;;
             "$MENU_DEVICE_TOOLS") menuDeviceTools ;;
             "$MENU_SELECT_DEVICE") menuSelectDevice ;;
+            "$MENU_QUICK_CONNECT") menuQuickConnect ;;
+            "$MENU_SETTINGS") menuSettings ;;
             "$MENU_EXIT"|"") exit 0 ;;
         esac
     done
